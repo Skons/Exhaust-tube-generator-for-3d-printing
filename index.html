@@ -1,0 +1,1166 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Exhaust Tube STL Generator</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/earcut@2.2.4/dist/earcut.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: system-ui, -apple-system, sans-serif; background: #0f0f1a; color: #e0e0f0; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+header { padding: 10px 18px; border-bottom: 1px solid #2a2a4a; display: flex; align-items: center; gap: 16px; background: #12122a; flex-shrink: 0; }
+header h1 { font-size: 15px; font-weight: 500; color: #c0c0e0; }
+header span { font-size: 11px; color: #555577; }
+.app { display: grid; grid-template-columns: 360px 1fr; flex: 1; overflow: hidden; min-height: 0; }
+.panel { background: #141428; border-right: 1px solid #2a2a4a; display: flex; flex-direction: column; overflow: hidden; }
+.panel-header { padding: 12px 16px; border-bottom: 1px solid #2a2a4a; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+.panel-header h2 { font-size: 13px; font-weight: 500; color: #a0a0c0; }
+.steps-list { overflow-y: auto; padding: 8px; flex-shrink: 0; max-height: 220px; }
+.steps-list::-webkit-scrollbar { width: 4px; }
+.steps-list::-webkit-scrollbar-thumb { background: #2a2a4a; border-radius: 2px; }
+.step-card { background: #1c1c38; border: 1px solid #2a2a4a; border-radius: 6px; padding: 9px 12px; margin-bottom: 5px; cursor: pointer; transition: border-color 0.15s; }
+.step-card:hover { border-color: #3a3a6a; }
+.step-card.active { border-color: #4a7fa5; background: #1a2a38; }
+.step-card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 3px; }
+.step-label { font-size: 12px; font-weight: 500; color: #8888aa; }
+.step-card.active .step-label { color: #6aacda; }
+.step-dims { font-size: 11px; color: #555577; }
+.btn-remove { background: none; border: none; cursor: pointer; color: #555577; padding: 2px 4px; font-size: 13px; border-radius: 4px; }
+.btn-remove:hover { color: #e06060; background: #2a1818; }
+.add-btn { margin: 6px 8px; padding: 8px; background: none; border: 1px dashed #2a2a4a; border-radius: 6px; color: #666688; cursor: pointer; font-size: 13px; width: calc(100% - 16px); transition: all 0.15s; flex-shrink: 0; }
+.add-btn:hover { background: #1c1c38; color: #a0a0c0; border-color: #3a3a6a; }
+.editor { border-top: 1px solid #2a2a4a; padding: 12px; background: #111126; flex: 1; overflow-y: auto; }
+.editor::-webkit-scrollbar { width: 4px; }
+.editor::-webkit-scrollbar-thumb { background: #2a2a4a; border-radius: 2px; }
+.editor h3 { font-size: 11px; font-weight: 500; margin-bottom: 10px; color: #7777aa; text-transform: uppercase; letter-spacing: 0.06em; }
+.section-title { font-size: 11px; color: #555577; text-transform: uppercase; letter-spacing: 0.05em; margin: 10px 0 6px; border-top: 1px solid #1e1e3a; padding-top: 8px; }
+.field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
+.field { display: flex; flex-direction: column; gap: 3px; }
+.field label { font-size: 11px; color: #555577; }
+.field input, .field select { font-size: 13px; padding: 6px 8px; border: 1px solid #2a2a4a; border-radius: 5px; background: #1c1c38; color: #d0d0f0; width: 100%; outline: none; transition: border-color 0.15s; }
+.field input:focus, .field select:focus { border-color: #4a7fa5; }
+.field input[readonly] { color: #555577; background: #161630; cursor: not-allowed; }
+.shape-picker { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin-bottom: 8px; }
+.shape-btn { border: 1px solid #2a2a4a; border-radius: 6px; padding: 8px 4px; cursor: pointer; background: #1c1c38; color: #7777aa; font-size: 12px; text-align: center; transition: all 0.15s; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.shape-btn:hover { border-color: #3a3a6a; color: #a0a0c0; }
+.shape-btn.active { border-color: #4a7fa5; background: #1a2a38; color: #6aacda; }
+.toggle-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.toggle-row label { font-size: 12px; color: #666688; cursor: pointer; }
+input[type=checkbox] { width: 14px; height: 14px; accent-color: #4a7fa5; cursor: pointer; }
+.inherited-badge { background: #1a2820; border: 1px solid #2a4a3a; border-radius: 5px; padding: 6px 10px; font-size: 11px; color: #5a8a6a; margin-bottom: 8px; line-height: 1.5; }
+.viewport { background: #0d0d1e; position: relative; overflow: hidden; }
+#c { display: block; width: 100%; height: 100%; }
+.toolbar { position: absolute; bottom: 16px; right: 16px; display: flex; flex-direction: column; gap: 8px; }
+.toolbar button { border: 1px solid rgba(255,255,255,0.15); color: #c0c0e0; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; transition: all 0.15s; }
+.reset-btn { background: rgba(255,255,255,0.06); }
+.reset-btn:hover { background: rgba(255,255,255,0.12); }
+.download-btn { background: #2a6090; border-color: #3a80c0 !important; color: white; font-weight: 500; }
+.download-btn:hover { background: #3a70a0; }
+.info-badge { position: absolute; top: 12px; left: 12px; background: rgba(0,0,0,0.6); color: rgba(180,180,220,0.7); font-size: 11px; padding: 5px 10px; border-radius: 5px; pointer-events: none; }
+.total-badge { position: absolute; top: 12px; right: 12px; background: rgba(0,0,0,0.6); color: rgba(100,200,150,0.9); font-size: 12px; font-weight: 500; padding: 5px 10px; border-radius: 5px; pointer-events: none; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Exhaust Tube STL Generator</h1>
+  <span>Sleep om te draaien · Scroll om te zoomen · Elk segment sluit aan op het vorige</span>
+</header>
+<div class="app">
+  <div class="panel">
+    <div class="panel-header">
+      <h2>Segmenten</h2>
+      <span style="font-size:11px;color:#444466" id="seg-count"></span>
+    </div>
+    <div class="steps-list" id="steps-list"></div>
+    <button class="add-btn" onclick="addStep()">+ Segment toevoegen</button>
+    <div class="editor" id="editor"></div>
+  </div>
+  <div class="viewport">
+    <canvas id="c"></canvas>
+    <div class="info-badge">Sleep om te draaien · Scroll om te zoomen</div>
+    <div class="total-badge" id="total-badge"></div>
+    <div class="toolbar">
+      <button class="reset-btn" onclick="resetView()">↺ Reset view</button>
+      <button class="download-btn" id="download-btn" onclick="downloadSTL()">⬇ Download STL</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const steps = [
+  { id:1, label:'Ingang',  lengthMm:150, shape:'round', widthMm:100, heightMm:100, wallMm:3, bendDeg:0,  bendAxis:'X', bendStart:0, bendEnd:100, connector:'none', flange:false },
+  { id:2, label:'Bocht',   lengthMm:100, shape:'round', widthMm:100, heightMm:100, wallMm:3, bendDeg:45, bendAxis:'X', bendStart:0, bendEnd:100, connector:'none', flange:false },
+  { id:3, label:'Uitgang', lengthMm:200, shape:'rect',  widthMm:140, heightMm:80,  wallMm:3, bendDeg:0,  bendAxis:'X', bendStart:0, bendEnd:100, connector:'none', flange:true  },
+];
+let nextId=4, activeIdx=0;
+let scene, camera, renderer, meshGroup;
+let isDragging=false, prevMouse={x:0,y:0};
+let rotX=0.4, rotY=0.6, zoom=1;
+
+function getInProps(idx) {
+  if (idx===0) return { shape:steps[0].shape, w:steps[0].widthMm, h:steps[0].heightMm };
+  const p=steps[idx-1];
+  return { shape:p.shape, w:p.widthMm, h:p.heightMm };
+}
+
+function addStep() {
+  const p=steps[steps.length-1];
+  steps.push({ id:nextId++, label:'Segment '+(nextId-1), lengthMm:150,
+    shape:p.shape, widthMm:p.widthMm, heightMm:p.heightMm,
+    wallMm:p.wallMm, bendDeg:0, bendAxis:'X', bendStart:0, bendEnd:100, connector:'none', flange:false });
+  activeIdx=steps.length-1;
+  renderUI(); buildMesh();
+}
+
+function removeStep(i,e) {
+  e.stopPropagation();
+  if(steps.length<=1) return;
+  steps.splice(i,1);
+  if(activeIdx>=steps.length) activeIdx=steps.length-1;
+  renderUI(); buildMesh();
+}
+
+function selectStep(i){ activeIdx=i; renderUI(); buildMesh(); }
+
+function renderUI() {
+  enforceSlipBendConstraints();
+  const list=document.getElementById('steps-list');
+  list.innerHTML='';
+  let total=0;
+  steps.forEach((s,i)=>{
+    total+=s.lengthMm;
+    const inp=getInProps(i);
+    const sl={ round:'○', square:'□', rect:'▭' };
+    const dims=i===0
+      ? `${sl[s.shape]} ${s.widthMm}${s.shape==='round'?'⌀':s.shape==='rect'?' × '+s.heightMm:''}mm · L:${s.lengthMm}mm`
+      : `${sl[inp.shape]}→${sl[s.shape]} ${inp.w}×${inp.h}→${s.widthMm}${s.shape==='rect'?' × '+s.heightMm:''}mm · L:${s.lengthMm}mm${s.bendDeg?` · ${s.bendDeg}°`:''}`;
+    const d=document.createElement('div');
+    d.className='step-card'+(i===activeIdx?' active':'');
+    d.onclick=()=>selectStep(i);
+    d.innerHTML=`<div class="step-card-header"><span class="step-label">${i===0?'① ':i===steps.length-1?'⑥ ':'↓ '}${s.label}</span><button class="btn-remove" onclick="removeStep(${i},event)">✕</button></div><div class="step-dims">${dims}${s.connector==='magnet'?' · 🔵 magneet':s.connector==='slip'?' · ⟶ schuif':''}${s.flange?' · flens':''}</div>`;
+    list.appendChild(d);
+  });
+  document.getElementById('seg-count').textContent=steps.length+' segm.';
+  document.getElementById('total-badge').textContent='Totaal: '+total+' mm';
+  const nParts = computePartGroups().length;
+  const dlBtn = document.getElementById('download-btn');
+  if (dlBtn) dlBtn.textContent = nParts>1 ? `⬇ Download ZIP (${nParts} delen)` : '⬇ Download STL';
+  renderEditor();
+}
+
+function shapeIcon(sh) {
+  if(sh==='round') return `<svg width="28" height="20" viewBox="0 0 28 20"><ellipse cx="14" cy="10" rx="10" ry="8" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>`;
+  if(sh==='square') return `<svg width="28" height="20" viewBox="0 0 28 20"><rect x="4" y="2" width="20" height="16" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>`;
+  return `<svg width="28" height="20" viewBox="0 0 28 20"><rect x="1" y="5" width="26" height="10" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>`;
+}
+
+// ─── Scroll handler op de editor — gebaseerd op muispositie ──────
+// Geen focus-tracking nodig: we zoeken het element onder de muis
+// direct op bij elk scroll-event. Werkt ook na DOM-updates.
+document.addEventListener('DOMContentLoaded', ()=>{
+  const ed = document.getElementById('editor');
+  ed.addEventListener('wheel', e=>{
+    // Zoek het input[type=number] onder de muisaanwijzer
+    const el = document.elementFromPoint(e.clientX, e.clientY);
+    if(!el || !el.matches('input[type=number]')) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const step = parseFloat(el.step)||1;
+    const min  = el.min!=='' ? parseFloat(el.min) : -Infinity;
+    const max  = el.max!=='' ? parseFloat(el.max) :  Infinity;
+    const cur  = parseFloat(el.value)||0;
+    const next = Math.min(max, Math.max(min, cur + (e.deltaY<0 ? step : -step)));
+    el.value   = next;
+    el.dispatchEvent(new Event('input'));
+  }, {passive:false});
+});
+
+function renderEditor() {
+  const s=steps[activeIdx];
+  const inp=getInProps(activeIdx);
+  const isFirst=activeIdx===0;
+  const ed=document.getElementById('editor');
+  const hField=s.shape==='round'||s.shape==='square'
+    ? `<div class="field"><label>Hoogte (mm)</label><input type="number" value="${s.heightMm}" readonly tabindex="-1"></div>`
+    : `<div class="field"><label>Hoogte (mm)</label><input type="number" min="10" max="1000" step="1" value="${s.heightMm}" oninput="updShape('heightMm',+this.value)"></div>`;
+
+  const axisBtn = (ax,label) =>
+    `<button class="shape-btn${s.bendAxis===ax?' active':''}" onclick="upd('bendAxis','${ax}')">${label}</button>`;
+
+  // Als het VORIGE segment een schuifkoppeling heeft, steekt de sok een
+  // stuk in dit segment. Een rechte sok kan niet meebuigen, dus dit
+  // segment mag pas ná de soklengte beginnen te buigen — vandaar een
+  // minimum op "Start bocht" (%) op basis van die soklengte.
+  let minBendStartPct = 0;
+  let slipNoticeHtml = '';
+  if (!isFirst) {
+    const prev = steps[activeIdx-1];
+    if (prev.connector === 'slip') {
+      const sokLen = prev.connectorLen || 20;
+      minBendStartPct = Math.min(99, Math.ceil((sokLen / s.lengthMm) * 100));
+      if (s.bendStart < minBendStartPct) {
+        s.bendStart = minBendStartPct;
+        if (s.bendEnd <= s.bendStart) s.bendEnd = Math.min(100, s.bendStart+1);
+      }
+      slipNoticeHtml = `<div class="inherited-badge" style="background:#2a2010;border-color:#4a3a1a;color:#c0a05a">⟶ Sok van vorig segment steekt ${sokLen}mm hierin — "Start bocht" kan niet lager dan ${minBendStartPct}% (anders buigt de rechte sok mee).</div>`;
+    }
+  }
+
+  ed.innerHTML=`
+    <h3>Segment ${activeIdx+1}: ${s.label}</h3>
+    ${!isFirst?`<div class="inherited-badge">↳ Ingang: ${inp.shape==='round'?'○ Rond':inp.shape==='square'?'□ Vierkant':'▭ Rechthoek'} — ${inp.w}${inp.shape==='round'?'⌀':inp.shape==='square'?'':' × '+inp.h} mm (overgenomen van vorig segment)</div>`:''}
+    ${slipNoticeHtml}
+    <div class="section-title">Uitgang vorm</div>
+    <div class="shape-picker">
+      <button class="shape-btn${s.shape==='round'?' active':''}" onclick="setShape('round')">${shapeIcon('round')}Rond</button>
+      <button class="shape-btn${s.shape==='square'?' active':''}" onclick="setShape('square')">${shapeIcon('square')}Vierkant</button>
+      <button class="shape-btn${s.shape==='rect'?' active':''}" onclick="setShape('rect')">${shapeIcon('rect')}Rechthoek</button>
+    </div>
+    <div class="section-title">Uitgang afmetingen</div>
+    <div class="field-row">
+      <div class="field"><label>${s.shape==='round'?'Diameter (mm)':'Breedte (mm)'}</label><input type="number" min="10" max="1000" step="1" value="${s.widthMm}" oninput="updShape('widthMm',+this.value)"></div>
+      ${hField}
+    </div>
+    <div class="section-title">Segment instellingen</div>
+    <div class="field-row">
+      <div class="field"><label>Naam</label><input value="${s.label}" oninput="upd('label',this.value)"></div>
+      <div class="field"><label>Wanddikte (mm)</label><input type="number" min="0.5" max="20" step="0.5" value="${s.wallMm}" oninput="upd('wallMm',+this.value)"></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>Lengte (mm)</label><input type="number" min="5" max="5000" step="5" value="${s.lengthMm}" oninput="upd('lengthMm',+this.value)"></div>
+      <div class="field"><label>Booghoek (°)</label><input type="number" min="-360" max="360" step="1" value="${s.bendDeg}" oninput="upd('bendDeg',+this.value)"></div>
+    </div>
+    <div class="section-title">Buigas (buiging draait om deze as)</div>
+    <div class="shape-picker" style="grid-template-columns:1fr 1fr 1fr">
+      ${axisBtn('X','X-as')}${axisBtn('Y','Y-as')}${axisBtn('Z','Z-as')}
+    </div>
+    <div class="section-title">Buigzone (% van segmentlengte)</div>
+    <div class="field-row">
+      <div class="field"><label>Start bocht (%)</label><input type="number" min="${minBendStartPct}" max="99" step="1" value="${s.bendStart}" oninput="updClamp('bendStart',+this.value,${minBendStartPct},${s.bendEnd-1})"></div>
+      <div class="field"><label>Einde bocht (%)</label><input type="number" min="1" max="100" step="1" value="${s.bendEnd}" oninput="updClamp('bendEnd',+this.value,${s.bendStart+1},100)"></div>
+    </div>
+    <div style="font-size:11px;color:#555577;margin-bottom:8px">Vóór start en na einde loopt de buis recht.</div>
+    <div class="section-title">Koppeling aan einde segment</div>
+    <div class="shape-picker" style="grid-template-columns:1fr 1fr 1fr">
+      <button class="shape-btn${s.connector==='none'?' active':''}" onclick="upd('connector','none')">
+        <svg width="32" height="22" viewBox="0 0 32 22"><line x1="0" y1="7" x2="32" y2="7" stroke="currentColor" stroke-width="1.5"/><line x1="0" y1="15" x2="32" y2="15" stroke="currentColor" stroke-width="1.5"/></svg>
+        Doorlopend
+      </button>
+      <button class="shape-btn${s.connector==='magnet'?' active':''}" onclick="upd('connector','magnet')">
+        <svg width="32" height="22" viewBox="0 0 32 22">
+          <line x1="0" y1="8" x2="9" y2="8" stroke="currentColor" stroke-width="1.5"/>
+          <line x1="0" y1="14" x2="9" y2="14" stroke="currentColor" stroke-width="1.5"/>
+          <circle cx="12" cy="11" r="4" fill="none" stroke="currentColor" stroke-width="1.3"/>
+          <circle cx="12" cy="11" r="2" fill="currentColor" opacity="0.5"/>
+          <circle cx="20" cy="11" r="4" fill="none" stroke="currentColor" stroke-width="1.3"/>
+          <circle cx="20" cy="11" r="2" fill="currentColor" opacity="0.5"/>
+          <line x1="23" y1="8" x2="32" y2="8" stroke="currentColor" stroke-width="1.5"/>
+          <line x1="23" y1="14" x2="32" y2="14" stroke="currentColor" stroke-width="1.5"/>
+        </svg>
+        Mag. koppeling
+      </button>
+      <button class="shape-btn${s.connector==='slip'?' active':''}" onclick="upd('connector','slip')">
+        <svg width="32" height="22" viewBox="0 0 32 22">
+          <line x1="0" y1="8" x2="14" y2="8" stroke="currentColor" stroke-width="1.5"/>
+          <line x1="0" y1="14" x2="14" y2="14" stroke="currentColor" stroke-width="1.5"/>
+          <line x1="14" y1="6" x2="32" y2="6" stroke="currentColor" stroke-width="1.5"/>
+          <line x1="14" y1="16" x2="32" y2="16" stroke="currentColor" stroke-width="1.5"/>
+          <line x1="14" y1="6" x2="14" y2="8" stroke="currentColor" stroke-width="1.5"/>
+          <line x1="14" y1="14" x2="14" y2="16" stroke="currentColor" stroke-width="1.5"/>
+        </svg>
+        Schuif
+      </button>
+    </div>
+    ${s.connector==='magnet'?`
+    <div class="field-row" style="margin-top:6px">
+      <div class="field"><label>Ringdikte (mm)</label><input type="number" min="2" max="20" step="0.5" value="${s.connectorLen||8}" oninput="upd('connectorLen',+this.value)"></div>
+      <div class="field"><label>Magneet ⌀ (mm)</label><input type="number" min="1" max="20" step="0.5" value="${s.magnetD||5}" oninput="upd('magnetD',+this.value)"></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>Aantal magneten</label><input type="number" min="2" max="24" step="1" value="${s.magnetCount||6}" oninput="upd('magnetCount',+this.value)"></div>
+      <div class="field"><label>Magneet dikte (mm)</label><input type="number" min="1" max="15" step="0.5" value="${s.connectorDepth||3}" oninput="upd('connectorDepth',+this.value)"></div>
+    </div>
+    <div style="font-size:11px;color:#5a7a9a;margin-bottom:8px;line-height:1.6;background:#1a2030;border-radius:5px;padding:7px 10px;border:1px solid #2a3a5a">
+      🧲 Een platte ring om de buis met een golvende buitenrand — elke bult bevat een rond magneetgat. Het volgende segment krijgt dezelfde ring aan zijn begin, zodat de golven en magneten precies in elkaar passen. De ringdikte past zich automatisch aan als de magneet dikker is dan de ingestelde ringdikte.
+    </div>`:''}
+    ${s.connector==='slip'?`
+    <div class="field-row" style="margin-top:6px">
+      <div class="field"><label>Sok lengte (mm)</label><input type="number" min="5" max="60" step="1" value="${s.connectorLen||20}" oninput="upd('connectorLen',+this.value)"></div>
+      <div class="field"><label>Speling (mm)</label><input type="number" min="0.1" max="2" step="0.05" value="${s.connectorDepth||0.3}" oninput="updClamp('connectorDepth',+this.value,0.1,2)"></div>
+    </div>
+    <div style="font-size:11px;color:#5a7a9a;margin-bottom:8px;line-height:1.6;background:#1a2030;border-radius:5px;padding:7px 10px;border:1px solid #2a3a5a">
+      ↔ <b>Speling</b> = ruimte aan elke kant tussen de buitenwand van het volgende segment en de binnenwand van de sok. Bij 0.3mm past de sok er licht strak omheen — ideaal voor lijm. Groter = losser; kleiner = heel strak (kan lastig printen).
+    </div>`:''}
+    <div class="section-title">Overige opties</div>
+    <div class="toggle-row"><input type="checkbox" id="fl" ${s.flange?'checked':''} onchange="upd('flange',this.checked)"><label for="fl">Flens aan einde</label></div>`;
+}
+
+function setShape(shape) {
+  const s=steps[activeIdx];
+  s.shape=shape;
+  if(shape!=='rect') s.heightMm=s.widthMm;
+  renderUI(); buildMesh();
+}
+function updShape(key,val) {
+  const s=steps[activeIdx];
+  s[key]=val;
+  if(s.shape!=='rect') s.heightMm=s.widthMm;
+  renderUI(); buildMesh();
+}
+function updClamp(key,val,mn,mx){ steps[activeIdx][key]=Math.min(mx,Math.max(mn,val)); renderUI(); buildMesh(); }
+function upd(key,val){ steps[activeIdx][key]=val; renderUI(); buildMesh(); }
+
+// ─── Profile: returns array of [x,y] points for a cross-section ──
+function makeProfile(shape, w, h, wall, inner) {
+  const N=shape==='round'?32:4;
+  if(shape==='round') {
+    const r=inner?(w/2-wall):w/2;
+    return Array.from({length:N},(_,i)=>{
+      const a=(i/N)*Math.PI*2-Math.PI/2;
+      return [Math.cos(a)*r, Math.sin(a)*r];
+    });
+  } else {
+    const hw=inner?(w/2-wall):w/2;
+    const hh=inner?(h/2-wall):h/2;
+    if(shape==='square') return [[-hw,-hw],[hw,-hw],[hw,hw],[-hw,hw]];
+    return [[-hw,-hh],[hw,-hh],[hw,hh],[-hw,hh]];
+  }
+}
+
+function resampleProfile(pts, N) {
+  if(pts.length===N) return pts;
+  return Array.from({length:N},(_,i)=>{
+    const f=(i/N)*pts.length;
+    const a=Math.floor(f)%pts.length, b=(a+1)%pts.length, frac=f-Math.floor(f);
+    return [pts[a][0]*(1-frac)+pts[b][0]*frac, pts[a][1]*(1-frac)+pts[b][1]*frac];
+  });
+}
+
+// ─── Arc math ────────────────────────────────────────────────────
+// bendAxis: 'X'|'Y'|'Z' — the rotation axis in the segment's local frame.
+//   X-axis → arc curves in the YZ plane (bends "up/down" in local space)
+//   Z-axis → arc curves in the XY plane (bends "left/right" in local space)
+//   Y-axis → arc curves in the XZ plane (twists around the tube axis — unusual)
+// bendStart/bendEnd: 0-100% of segment length where bending is active.
+//   Outside this zone the tube runs straight, maintaining the direction
+//   it had at the zone boundary.
+
+function arcParams(len, bendDeg, bendAxis, bendStart, bendEnd) {
+  // bendStart/End in 0–1 range
+  const s0 = (bendStart||0) / 100;
+  const s1 = (bendEnd!=null?bendEnd:100) / 100;
+  const bendLen = Math.max(0.001, s1-s0) * len;  // length of the curved section
+  const bendRad = bendDeg * Math.PI/180;
+  const R = Math.abs(bendRad)>0.001 ? bendLen/Math.abs(bendRad) : Infinity;
+  return { s0, s1, bendLen, bendRad, R };
+}
+
+// Return [x,y,z] position along the segment at parametric t ∈ [0,1]
+// Local frame: starts at origin, initial tangent = +Y
+function segLocalPos(t, len, bendDeg, bendAxis, bendStart, bendEnd) {
+  if(Math.abs(bendDeg)<0.01) return [0, t*len, 0];
+  const {s0,s1,bendLen,bendRad,R} = arcParams(len,bendDeg,bendAxis,bendStart,bendEnd);
+  const sign = bendDeg>0 ? 1 : -1;
+
+  // Position split into three zones:
+  // [0, s0]: straight, direction = +Y
+  // [s0, s1]: arc
+  // [s1, 1]: straight, direction = end-tangent of arc
+
+  function arcPos(tArc) {
+    // tArc ∈ [0,1] within the bend zone
+    const angle = bendRad * tArc;
+    if(bendAxis==='Z') {
+      // rotates in XY plane
+      const cx = sign * R;
+      return [cx - cx*Math.cos(angle), Math.abs(R*Math.sin(angle)), 0];
+    } else if(bendAxis==='X') {
+      // rotates in ZY plane
+      const cz = sign * R;
+      return [0, Math.abs(R*Math.sin(angle)), cz - cz*Math.cos(angle)];
+    } else {
+      // Y-axis: rotates in XZ plane (lateral roll)
+      const cx = sign * R;
+      return [cx - cx*Math.cos(angle), 0, Math.abs(R*Math.sin(angle))];
+    }
+  }
+
+  function arcEndTangent() {
+    return segLocalDir(1, bendDeg, bendAxis, 0, 100); // dir at end of full arc
+  }
+
+  if(t <= s0) {
+    // straight before bend
+    return [0, t*len, 0];
+  } else if(t <= s1) {
+    const tArc = (t-s0)/(s1-s0);
+    const ap = arcPos(tArc);
+    // offset by the straight lead-in
+    return [ap[0], ap[1]+s0*len, ap[2]];
+  } else {
+    // straight after bend — continue in end-tangent direction
+    const ap = arcPos(1);
+    const et = arcEndTangent();
+    const extra = (t-s1)*len;
+    return [ap[0]+et[0]*extra, ap[1]+s0*len+et[1]*extra, ap[2]+et[2]*extra];
+  }
+}
+
+// Tangent direction at parameter t
+function segLocalDir(t, bendDeg, bendAxis, bendStart, bendEnd) {
+  if(Math.abs(bendDeg)<0.01) return [0,1,0];
+  const s0 = (bendStart||0)/100;
+  const s1 = (bendEnd!=null?bendEnd:100)/100;
+  const sign = bendDeg>0 ? 1 : -1;
+
+  function arcTangent(tArc) {
+    const angle = bendRad * tArc;
+    if(bendAxis==='Z') return [sign*Math.sin(angle), Math.cos(angle), 0];
+    if(bendAxis==='X') return [0, Math.cos(angle), sign*Math.sin(angle)];
+    return [sign*Math.sin(angle), 0, Math.cos(angle)]; // Y-axis
+  }
+
+  const bendRad = bendDeg * Math.PI/180;
+  if(t<=s0) return [0,1,0];
+  if(t<=s1) return arcTangent((t-s0)/(s1-s0));
+  return arcTangent(1); // hold end direction
+}
+
+function segEndDir(bendDeg, bendAxis, bendStart, bendEnd)  { return segLocalDir(1, bendDeg, bendAxis, bendStart, bendEnd); }
+function segEndPos(len, bendDeg, bendAxis, bendStart, bendEnd) { return segLocalPos(1, len, bendDeg, bendAxis, bendStart, bendEnd); }
+
+// ─── Build one segment using parallel-transport frames ───────────
+// Parallel transport: we track right/up axes slice-by-slice by
+// rotating them by the small angular step between consecutive
+// tangents. This avoids any twist around the tube axis.
+function buildSegmentGeo(inShape,inW,inH, outShape,outW,outH, wall, len, bendDeg, bendAxis, bendStart, bendEnd) {
+  const SUBSEGS = Math.max(12, Math.round(Math.abs(bendDeg)/2)+1);
+  const N = 32;
+
+  const frames = [];
+  let tVec = new THREE.Vector3(0,1,0);
+  let rVec = new THREE.Vector3(1,0,0);
+  let uVec = new THREE.Vector3(0,0,1);
+
+  for(let si=0; si<=SUBSEGS; si++){
+    const t = si/SUBSEGS;
+    const d = segLocalDir(t, bendDeg, bendAxis, bendStart, bendEnd);
+    const newT = new THREE.Vector3(d[0],d[1],d[2]).normalize();
+    if(si>0){
+      const axis = new THREE.Vector3().crossVectors(tVec, newT);
+      if(axis.lengthSq()>1e-12){
+        axis.normalize();
+        const angle = Math.acos(Math.min(1,Math.max(-1, tVec.dot(newT))));
+        const q = new THREE.Quaternion().setFromAxisAngle(axis, angle);
+        rVec.applyQuaternion(q);
+        uVec.applyQuaternion(q);
+      }
+      tVec = newT.clone();
+    }
+    const pos = segLocalPos(t, len, bendDeg, bendAxis, bendStart, bendEnd);
+    frames.push({ pos, tVec: tVec.clone(), rVec: rVec.clone(), uVec: uVec.clone() });
+  }
+
+  // --- Build vertex rings for each slice ---
+  const op0=resampleProfile(makeProfile(inShape,inW,inH,wall,false),N);
+  const op1=resampleProfile(makeProfile(outShape,outW,outH,wall,false),N);
+  const ip0=resampleProfile(makeProfile(inShape,inW,inH,wall,true),N);
+  const ip1=resampleProfile(makeProfile(outShape,outW,outH,wall,true),N);
+
+  const verts=[], idx=[];
+
+  function ring3d(frame, pts2d){
+    const {pos,rVec,uVec}=frame;
+    return pts2d.map(([px,py])=>[
+      pos[0]+rVec.x*px+uVec.x*py,
+      pos[1]+rVec.y*px+uVec.y*py,
+      pos[2]+rVec.z*px+uVec.z*py
+    ]);
+  }
+
+  frames.forEach((fr, si)=>{
+    const t=si/SUBSEGS;
+    const outer=op0.map((p,i)=>[p[0]*(1-t)+op1[i][0]*t, p[1]*(1-t)+op1[i][1]*t]);
+    const inner=ip0.map((p,i)=>[p[0]*(1-t)+ip1[i][0]*t, p[1]*(1-t)+ip1[i][1]*t]);
+    ring3d(fr, outer).forEach(p=>verts.push(...p));
+    ring3d(fr, inner).forEach(p=>verts.push(...p));
+  });
+
+  const stride=N*2;
+  for(let si=0;si<SUBSEGS;si++){
+    const b0=si*stride, b1=(si+1)*stride;
+    for(let k=0;k<N;k++){
+      const n=(k+1)%N;
+      idx.push(b0+k, b1+k, b1+n,  b0+k, b1+n, b0+n);        // outer
+      idx.push(b0+N+k, b0+N+n, b1+N+n,  b0+N+k, b1+N+n, b1+N+k); // inner
+      if(si===SUBSEGS-1) idx.push(b1+k, b1+N+k, b1+N+n,  b1+k, b1+N+n, b1+n); // end cap
+    }
+  }
+  // start cap
+  for(let k=0;k<N;k++){
+    const n=(k+1)%N;
+    idx.push(k, n, N+n,  k, N+n, N+k);
+  }
+
+  const geo=new THREE.BufferGeometry();
+  geo.setAttribute('position',new THREE.Float32BufferAttribute(verts.flat(),3));
+  geo.setIndex(idx);
+  geo.computeVertexNormals();
+  return geo;
+}
+
+function getEndFrame(len, bendDeg, bendAxis, bendStart, bendEnd) {
+  const STEPS=Math.max(12,Math.round(Math.abs(bendDeg)/2)+1);
+  let tVec=new THREE.Vector3(0,1,0),rVec=new THREE.Vector3(1,0,0),uVec=new THREE.Vector3(0,0,1);
+  for(let si=1;si<=STEPS;si++){
+    const d=segLocalDir(si/STEPS,bendDeg,bendAxis,bendStart,bendEnd);
+    const newT=new THREE.Vector3(d[0],d[1],d[2]).normalize();
+    const axis=new THREE.Vector3().crossVectors(tVec,newT);
+    if(axis.lengthSq()>1e-12){
+      axis.normalize();
+      const angle=Math.acos(Math.min(1,Math.max(-1,tVec.dot(newT))));
+      const q=new THREE.Quaternion().setFromAxisAngle(axis,angle);
+      rVec.applyQuaternion(q);uVec.applyQuaternion(q);
+    }
+    tVec=newT.clone();
+  }
+  return {pos:segLocalPos(1,len,bendDeg,bendAxis,bendStart,bendEnd),tVec,rVec,uVec};
+}
+
+function makeFlangeGeo(shape, w, h, wall, len, bendDeg, bendAxis, bendStart, bendEnd) {
+  const ft=wall*2;
+  const N=shape==='round'?32:4;
+  const {pos:ep, tVec:fwdV, rVec:right, uVec:up2}=getEndFrame(len,bendDeg,bendAxis,bendStart,bendEnd);
+
+  function ring(ow,oh,offset){
+    const pts=makeProfile(shape,ow,oh,0,false);
+    const rp=resampleProfile(pts,N);
+    return rp.map(([px,py])=>[
+      ep[0]+right.x*px+up2.x*py+fwdV.x*offset,
+      ep[1]+right.y*px+up2.y*py+fwdV.y*offset,
+      ep[2]+right.z*px+up2.z*py+fwdV.z*offset
+    ]);
+  }
+
+  const fw=w+ft*2, fh=h+ft*2;
+  const or0=ring(fw,fh,0), ir0=ring(w,h,0);
+  const or1=ring(fw,fh,ft), ir1=ring(w,h,ft);
+  const verts=[], idx2=[];
+  [...or0,...ir0,...or1,...ir1].forEach(p=>verts.push(...p));
+  for(let k=0;k<N;k++){
+    const n=(k+1)%N;
+    idx2.push(k,n,N+n, k,N+n,N+k);
+    idx2.push(2*N+k,3*N+k,3*N+n, 2*N+k,3*N+n,2*N+n);
+    idx2.push(k,2*N+k,2*N+n, k,2*N+n,n);
+    idx2.push(N+k,N+n,3*N+n, N+k,3*N+n,3*N+k);
+    idx2.push(k,N+k,3*N+k, k,3*N+k,2*N+k);
+    idx2.push(n,2*N+n,3*N+n, n,3*N+n,N+n);
+  }
+  const geo=new THREE.BufferGeometry();
+  geo.setAttribute('position',new THREE.Float32BufferAttribute(verts.flat(),3));
+  geo.setIndex(idx2); geo.computeVertexNormals();
+  return geo;
+}
+
+// ─── Connector geometry ──────────────────────────────────────────
+
+// Solid cylinder along a given axis, centred at (cx,cy,cz)
+function makeCylinderGeo(cx,cy,cz, ax,ay,az, radius, height, N=20) {
+  const aV=new THREE.Vector3(ax,ay,az).normalize();
+  const hint=Math.abs(aV.y)<0.99?new THREE.Vector3(0,1,0):new THREE.Vector3(1,0,0);
+  const rV=new THREE.Vector3().crossVectors(hint,aV).normalize();
+  const uV=new THREE.Vector3().crossVectors(aV,rV).normalize();
+  const verts=[], idx=[];
+  // v0 = bottom centre, v1 = top centre
+  verts.push(cx-aV.x*height/2,cy-aV.y*height/2,cz-aV.z*height/2);
+  verts.push(cx+aV.x*height/2,cy+aV.y*height/2,cz+aV.z*height/2);
+  for(let i=0;i<N;i++){
+    const a=(i/N)*Math.PI*2;
+    const px=rV.x*Math.cos(a)*radius+uV.x*Math.sin(a)*radius;
+    const py=rV.y*Math.cos(a)*radius+uV.y*Math.sin(a)*radius;
+    const pz=rV.z*Math.cos(a)*radius+uV.z*Math.sin(a)*radius;
+    verts.push(cx-aV.x*height/2+px,cy-aV.y*height/2+py,cz-aV.z*height/2+pz); // bottom ring
+    verts.push(cx+aV.x*height/2+px,cy+aV.y*height/2+py,cz+aV.z*height/2+pz); // top ring
+  }
+  for(let i=0;i<N;i++){
+    const n=(i+1)%N;
+    const b0=2+i*2, b1=2+n*2;
+    idx.push(0,b1,b0); idx.push(1,b0+1,b1+1);
+    idx.push(b0,b1,b1+1, b0,b1+1,b0+1);
+  }
+  const geo=new THREE.BufferGeometry();
+  geo.setAttribute('position',new THREE.Float32BufferAttribute(verts,3));
+  geo.setIndex(idx); geo.computeVertexNormals();
+  return geo;
+}
+
+// ─── Magnetische koppeling ────────────────────────────────────────
+// Elke tand is een holle cilindervormige pin die radiaal op de buis staat.
+// De pin is open aan voor- en achterkant zodat de magneet er doorheen steekt
+// en de magneten van beide segmenten elkaar direct raken.
+// De pin-as loopt radiaal (naar buiten) vanuit het buis-midden.
+
+// ─── Magnetische koppeling (tandwiel-achtige ring, vergroeid met buis) ──
+// De ring volgt exact de contour van de buis zelf (rond, vierkant of
+// rechthoekig — dezelfde profielfunctie als de buiswand), en begint op
+// die contour (geen gat). Vlak bij de naad is de ring smal (volgt de
+// buiscontour); verder de buis in verbreedt hij golvend naar de bulten
+// met de magneetbakjes — alsof de tanden organisch uit de buiswand
+// groeien, ongeacht of de buis rond, vierkant of rechthoekig is.
+
+function makeMagneticCouplingGeo(shape, w, h, wall,
+    len, bendDeg, bendAxis, bendStart, bendEnd,
+    ringThick, magnetD, magnetCount, magnetThick,
+    female, frameOverride) {
+
+  const frame = (female && frameOverride)
+    ? frameOverride
+    : getEndFrame(len, bendDeg, bendAxis, bendStart, bendEnd);
+  const { pos:ep, tVec:fwdV, rVec:right, uVec:up2 } = frame;
+
+  const mR        = magnetD / 2;
+  const pocketR   = mR + 0.2;
+  const sign      = female ? -1 : 1;
+  // Ringdikte = ALLEEN de axiale dikte van de ring (hoe ver hij de buis
+  // in loopt), verder nergens voor gebruikt. De ring mag nooit dunner
+  // zijn dan de magneet die erin moet passen.
+  const axLen     = Math.max(ringThick, magnetThick);
+  // Bult-hoogte (hoe ver de tand zichtbaar naar buiten steekt, oftewel
+  // de "breedte" van de ring) hangt UITSLUITEND af van de magneetmaat —
+  // volledig losgekoppeld van zowel Ringdikte als de buiswanddikte, zodat
+  // het wijzigen van die twee instellingen de ringbreedte niet beïnvloedt.
+  const bumpAmp   = pocketR*2 + 2;
+  // Het magneetgat loopt nu altijd volledig door de Ringdikte heen (zie
+  // buildCapWithHoles/makePocketGeo verderop) — geen aparte bodemdikte
+  // meer nodig.
+
+  const N = magnetCount * 24; // hoekresolutie rondom
+
+  // Basiscontour = de ECHTE buitenrand van de buis (rond/vierkant/rechthoek),
+  // dezelfde profielfunctie als de buiswand zelf gebruikt, zodat de ring
+  // altijd exact aansluit — geen benaderde cirkel meer.
+  const baseProfile = resampleProfile(makeProfile(shape, w, h, 0, false), N);
+  // Binnenboring wordt per punt afgeleid van het buitenoppervlak zelf
+  // (zie hoofdlus verderop), zodat de wanddikte overal gelijk blijft —
+  // ook op de bulten, niet alleen bij de buisaansluiting.
+
+  // Golffactor per hoekindex: magnetCount brede bulten rondom (tapse,
+  // doorlopende golf — de ring loopt vloeiend taps toe naar elke tand).
+  function waveFactorAt(i) {
+    const ang = (i/N) * Math.PI*2;
+    return (Math.cos(ang*magnetCount) + 1) / 2; // 0..1
+  }
+  // Buitenpunt bij de brede kant (naad): basiscontour + bult naar buiten,
+  // langs de eigen normaalrichting van dat contourpunt.
+  function outerBumpPointAt(i) {
+    const p = baseProfile[i];
+    const d = Math.hypot(p[0], p[1]) || 1;
+    const nx = p[0]/d, ny = p[1]/d;
+    const bump = bumpAmp * waveFactorAt(i);
+    return [p[0] + nx*bump, p[1] + ny*bump];
+  }
+
+  // axOff*sign: de smalle kant (t=1, aansluitend op de buiscontour) moet
+  // de EIGEN buis in lopen — voor mannelijk (sign=1) dus TERUG (-fwdV),
+  // voor vrouwelijk (sign=-1) dus VOORUIT (+fwdV). Vandaar het min-teken.
+  function worldPt2D(p2d, axOff) {
+    const a = -axOff * sign;
+    return [
+      ep[0] + right.x*p2d[0] + up2.x*p2d[1] + fwdV.x*a,
+      ep[1] + right.y*p2d[0] + up2.y*p2d[1] + fwdV.y*a,
+      ep[2] + right.z*p2d[0] + up2.z*p2d[1] + fwdV.z*a,
+    ];
+  }
+
+  const RAD_STEPS = 10;
+  const verts=[], idx=[];
+  const inner=[], outer=[];
+  for (let i=0;i<N;i++){
+    const pWide = outerBumpPointAt(i);  // constante buitencontour over de hele lengte (recht, geen taper)
+    const pBase = baseProfile[i];       // gebruikt voor de binnenboring (= exacte buiscontour)
+    const innerRow=[], outerRow=[];
+    for (let j=0;j<=RAD_STEPS;j++){
+      const t = j/RAD_STEPS;
+      const axOff = t * axLen;
+      // Geen taper: buitencontour blijft overal gelijk aan de brede kant (pWide),
+      // zodat de wand recht loopt in plaats van schuin toe te lopen naar de buis.
+      const ox = pWide[0];
+      const oy = pWide[1];
+      // Binnenboring = gewoon de kale buiscontour zelf (pBase) — de ring is
+      // puur extra materiaal BOVENOP de buis, boort dus nooit de buis in.
+      // In de dalen (geen bult) valt dit samen met pWide, zodat de wand
+      // daar naadloos aansluit zonder gat of overlap.
+      const ix = pBase[0];
+      const iy = pBase[1];
+      innerRow.push(worldPt2D([ix,iy], axOff));
+      outerRow.push(worldPt2D([ox,oy], axOff));
+    }
+    inner.push(innerRow); outer.push(outerRow);
+  }
+  const stride = N*(RAD_STEPS+1);
+  for (let i=0;i<N;i++) for(let j=0;j<=RAD_STEPS;j++) verts.push(...inner[i][j]);
+  for (let i=0;i<N;i++) for(let j=0;j<=RAD_STEPS;j++) verts.push(...outer[i][j]);
+  const iIdx=(i,j)=> i*(RAD_STEPS+1)+j;
+  const oIdx=(i,j)=> stride + i*(RAD_STEPS+1)+j;
+
+  for (let i=0;i<N;i++){
+    const n=(i+1)%N;
+    for (let j=0;j<RAD_STEPS;j++){
+      idx.push(oIdx(i,j), oIdx(n,j), oIdx(n,j+1), oIdx(i,j), oIdx(n,j+1), oIdx(i,j+1)); // buitenmantel
+      idx.push(iIdx(i,j), iIdx(i,j+1), iIdx(n,j+1), iIdx(i,j), iIdx(n,j+1), iIdx(n,j)); // binnenboring
+    }
+  }
+
+  const ringGeo = new THREE.BufferGeometry();
+  ringGeo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+  ringGeo.setIndex(idx);
+  ringGeo.computeVertexNormals();
+
+  const allGeos = [ringGeo];
+
+  // Magneetposities (2D, in het profielvlak) — gebruikt voor zowel de
+  // gaten in de doppen als de wand van elk gat.
+  const stepIdx = N / magnetCount;
+  const magnetPositions = [];
+  for (let ti=0; ti<magnetCount; ti++) {
+    const i = Math.round(ti*stepIdx) % N;
+    const pOuter = outerBumpPointAt(i);
+    const pBase  = baseProfile[i];
+    magnetPositions.push([ (pOuter[0]+pBase[0])/2, (pOuter[1]+pBase[1])/2 ]);
+  }
+
+  // ── Doppen via ECHTE 2D polygoon-triangulatie (earcut): de dop is de
+  // exacte wavy-ring vorm (buitencontour = outerBumpPointAt, binnenboring
+  // = baseProfile) MINUS een rond gat per magneet — earcut trianguleert
+  // dit gegarandeerd exact en waterdicht, geen benaderend rooster meer,
+  // dus geen overhang buiten de ring en geen ruimte tussen dop en gat.
+  const Np = 32; // resolutie van elk magneetgat in de dop
+
+  function buildCapWithHoles(axOffVal, flip, withHoles) {
+    // Vlakke 2D-punten verzamelen: eerst de buitencontour, dan de
+    // binnenboring (als hole), dan eventueel elk magneetgat (als hole).
+    const flat2D = [];
+    const holeStarts = [];
+    // Buitencontour (CCW volgens de bestaande outerBumpPointAt volgorde)
+    for (let i=0;i<N;i++) flat2D.push(outerBumpPointAt(i)[0], outerBumpPointAt(i)[1]);
+    // Binnenboring als hole: tegengestelde winding (omgekeerd doorlopen)
+    holeStarts.push(flat2D.length/2);
+    for (let i=N-1;i>=0;i--) flat2D.push(baseProfile[i][0], baseProfile[i][1]);
+    // Magneetgaten als holes (alleen als withHoles=true)
+    if (withHoles) {
+      for (const mp of magnetPositions) {
+        holeStarts.push(flat2D.length/2);
+        for (let i=Np-1;i>=0;i--) {
+          const a=(i/Np)*Math.PI*2;
+          flat2D.push(mp[0]+Math.cos(a)*pocketR, mp[1]+Math.sin(a)*pocketR);
+        }
+      }
+    }
+    const earcutFn = (typeof earcut === 'function') ? earcut : earcut.default;
+    const triIdx = earcutFn(flat2D, holeStarts, 2);
+    const cverts=[];
+    for (let i=0;i<flat2D.length;i+=2) {
+      cverts.push(worldPt2D([flat2D[i], flat2D[i+1]], axOffVal));
+    }
+    const flatVerts=[];
+    cverts.forEach(p=>flatVerts.push(...p));
+    // Winding per triangle omdraaien voor de "flip" (diepe) kant, zodat
+    // de normalen aan beide kanten van de ring de juiste kant op wijzen.
+    const properIdx = [];
+    if (flip) {
+      for (let t=0;t<triIdx.length;t+=3) properIdx.push(triIdx[t], triIdx[t+2], triIdx[t+1]);
+    } else {
+      for (let t=0;t<triIdx.length;t+=3) properIdx.push(triIdx[t], triIdx[t+1], triIdx[t+2]);
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(flatVerts,3));
+    geo.setIndex(properIdx);
+    geo.computeVertexNormals();
+    return geo;
+  }
+  allGeos.push(buildCapWithHoles(0, false, true));     // naad-kant: MET gaten (magneten raken elkaar)
+  allGeos.push(buildCapWithHoles(axLen, true, false)); // diepe kant: VOLLEDIG DICHT (gesloten achterkant)
+
+  // Gatwand: verbindt de rand van het gat in de naad-dop met het vlak
+  // van de gesloten diepe dop, zodat het bakje netjes afgesloten is aan
+  // de achterkant — de magneet valt erin vanaf de naad-kant en heeft
+  // daar steun tegen de gesloten bodem.
+  for (const mp of magnetPositions) {
+    allGeos.push(makePocketGeo(ep, right, up2, fwdV, sign, mp, pocketR, axLen, Np));
+  }
+
+  return mergeGeos(allGeos);
+}
+
+// Wand van één rond gat op een gegeven lokaal 2D-punt (px,py), vanaf de
+// naad-kant tot aan de gesloten diepe kant (die al dichtgemaakt is door
+// de solide dop hierboven — deze wand vult alleen de zijkant van het gat).
+function makePocketGeo(ep, right, up2, fwdV, sign, p2d, pocketR, throughDepth, Np) {
+  Np = Np || 24;
+  // Zelfde 2D-basis (right, up2) en dezelfde hoekvolgorde als de
+  // magneetgaten in buildCapWithHoles — zo vallen de randen exact op
+  // elkaar, geen geroteerde mismatch meer tussen wand en doprand.
+  const rimNear=[], rimFar=[];
+  for (let i=0;i<Np;i++){
+    // Zelfde volgorde als de hole-ring in buildCapWithHoles: i van Np-1 naar 0
+    const ii = Np-1-i;
+    const a=(ii/Np)*Math.PI*2;
+    const px = p2d[0]+Math.cos(a)*pocketR;
+    const py = p2d[1]+Math.sin(a)*pocketR;
+    const near = [
+      ep[0] + right.x*px + up2.x*py,
+      ep[1] + right.y*px + up2.y*py,
+      ep[2] + right.z*px + up2.z*py,
+    ];
+    rimNear.push(near);
+    // Andere kant: volledig door de Ringdikte heen (-sign, de eigen buis in)
+    rimFar.push([
+      near[0] - fwdV.x*throughDepth*sign,
+      near[1] - fwdV.y*throughDepth*sign,
+      near[2] - fwdV.z*throughDepth*sign,
+    ]);
+  }
+
+  const verts=[], idx=[];
+  rimNear.forEach(p=>verts.push(...p));
+  rimFar.forEach(p=>verts.push(...p));
+
+  for (let i=0;i<Np;i++){
+    const n=(i+1)%Np;
+    // Alleen de wand van het gat (geen bodem/dop aan weerskanten — open aan beide zijden)
+    idx.push(i, Np+n, Np+i, i, n, Np+n);
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(verts.flat(), 3));
+  geo.setIndex(idx);
+  geo.computeVertexNormals();
+  return geo;
+}
+
+function makeMagnetFemaleAtStart(shape, w, h, wall, toothH, magnetD, magnetCount, magnetThick) {
+  // Lokale (ongeroteerde) frame: de mesh krijgt zijn wereldoriëntatie
+  // pas later via mesh.quaternion.copy(worldQuat) in buildMesh.
+  // Hier dus gewoon de standaardassen gebruiken — net als getEndFrame
+  // dat ook in lokale ruimte doet voor het mannelijke uiteinde.
+  const frame = {
+    pos: [0,0,0],
+    tVec: new THREE.Vector3(0,1,0),
+    rVec: new THREE.Vector3(1,0,0),
+    uVec: new THREE.Vector3(0,0,1)
+  };
+  return makeMagneticCouplingGeo(shape, w, h, wall, 0,0,'X',0,100,
+    toothH, magnetD, magnetCount, magnetThick, true, frame);
+}
+
+function makeSlipConnectorGeo(shape, w, h, wall, len, bendDeg, bendAxis, bendStart, bendEnd, sokLen, clearance) {
+  const N = shape==='round' ? 32 : 4;
+  const sl = sokLen || 20;
+  // Harde ondergrens van 0.1mm speling per kant — voorkomt een exacte
+  // (of te kleine) pasvorm die niet meer in elkaar te schuiven is.
+  // Let op: '||' zou een letterlijke 0 stilzwijgend vervangen door de
+  // standaardwaarde, dus we checken hier expliciet op undefined/null.
+  const cl = Math.max(0.1, (clearance===undefined||clearance===null) ? 0.3 : clearance);
+
+  const {pos:ep, tVec:fwdV, rVec:right, uVec:up2} = getEndFrame(len, bendDeg, bendAxis, bendStart, bendEnd);
+
+  const sokOW = w + wall*2 + cl*2, sokOH = h + wall*2 + cl*2;
+  const sokIW = w + cl*2,          sokIH = h + cl*2;
+
+  function ring3d(profW, profH, offset, inner) {
+    const wallT = inner ? (sokOW-sokIW)/2 : 0;
+    const pts = resampleProfile(makeProfile(shape, profW, profH, wallT, inner), N);
+    return pts.map(([px,py]) => [
+      ep[0]+right.x*px+up2.x*py+fwdV.x*offset,
+      ep[1]+right.y*px+up2.y*py+fwdV.y*offset,
+      ep[2]+right.z*px+up2.z*py+fwdV.z*offset
+    ]);
+  }
+
+  const or0=ring3d(sokOW,sokOH,0,false), or1=ring3d(sokOW,sokOH,sl,false);
+  const ir0=ring3d(sokIW,sokIH,0,true),  ir1=ring3d(sokIW,sokIH,sl,true);
+  const verts=[], idx=[];
+  [...or0,...ir0,...or1,...ir1].forEach(p=>verts.push(...p));
+  for(let k=0;k<N;k++){
+    const n=(k+1)%N;
+    idx.push(k,n,2*N+n, k,2*N+n,2*N+k);
+    idx.push(N+k,3*N+k,3*N+n, N+k,3*N+n,N+n);
+    idx.push(k,N+k,N+n, k,N+n,n);
+    idx.push(2*N+k,2*N+n,3*N+n, 2*N+k,3*N+n,3*N+k);
+  }
+  const geo=new THREE.BufferGeometry();
+  geo.setAttribute('position',new THREE.Float32BufferAttribute(verts.flat(),3));
+  geo.setIndex(idx); geo.computeVertexNormals();
+  return geo;
+}
+
+function mergeGeos(geos) {
+  let tv=0; const offs=[];
+  geos.forEach(g=>{offs.push(tv);tv+=g.attributes.position.count;});
+  const pos=new Float32Array(tv*3), idx=[];
+  geos.forEach((g,gi)=>{
+    pos.set(g.attributes.position.array,offs[gi]*3);
+    g.index.array.forEach(i=>idx.push(i+offs[gi]));
+  });
+  const geo=new THREE.BufferGeometry();
+  geo.setAttribute('position',new THREE.BufferAttribute(pos,3));
+  geo.setIndex(idx); geo.computeVertexNormals();
+  return geo;
+}
+
+// Controleert ALLE segmenten (niet alleen het actief bewerkte) en dwingt
+// af dat een segment na een schuifkoppeling niet eerder buigt dan waar
+// de sok eindigt — anders zou de rechte sok door een bocht heen "snijden".
+// Dit draait vóór elke geometrie-opbouw, dus het werkt ook als je het
+// betreffende segment nooit zelf hebt geopend in de editor.
+function enforceSlipBendConstraints() {
+  for (let i=1; i<steps.length; i++) {
+    const prev = steps[i-1];
+    if (prev.connector !== 'slip') continue;
+    const s = steps[i];
+    const sokLen = prev.connectorLen || 20;
+    const minPct = Math.min(99, Math.ceil((sokLen / s.lengthMm) * 100));
+    if (s.bendStart < minPct) {
+      s.bendStart = minPct;
+      if (s.bendEnd <= s.bendStart) s.bendEnd = Math.min(100, s.bendStart+1);
+    }
+  }
+}
+
+// ─── Build scene mesh ────────────────────────────────────────────
+function buildMesh() {
+  enforceSlipBendConstraints();
+  if(meshGroup){
+    scene.remove(meshGroup);
+    meshGroup.traverse(o=>{if(o.geometry)o.geometry.dispose();if(o.material)o.material.dispose();});
+  }
+  meshGroup=new THREE.Group();
+
+  // We accumulate a world transform: position + quaternion
+  let worldPos=new THREE.Vector3(0,0,0);
+  let worldQuat=new THREE.Quaternion(); // identity = segment starts going +Y
+
+  steps.forEach((s,si)=>{
+    const inp=getInProps(si);
+    const geos=[];
+    geos.push(buildSegmentGeo(
+      inp.shape, inp.w, inp.h,
+      s.shape, s.widthMm, s.heightMm,
+      s.wallMm, s.lengthMm, s.bendDeg, s.bendAxis, s.bendStart, s.bendEnd
+    ));
+    if(s.flange) geos.push(makeFlangeGeo(s.shape,s.widthMm,s.heightMm,s.wallMm,s.lengthMm,s.bendDeg,s.bendAxis,s.bendStart,s.bendEnd));
+
+    // Magnetische koppeling: ring aan einde van dit segment (mannelijk)
+    if(s.connector==='magnet') {
+      geos.push(makeMagneticCouplingGeo(
+        s.shape,s.widthMm,s.heightMm,s.wallMm,
+        s.lengthMm,s.bendDeg,s.bendAxis,s.bendStart,s.bendEnd,
+        s.connectorLen||10, s.magnetD||5, s.magnetCount||6, s.connectorDepth||3,
+        false, null
+      ));
+    }
+    if(s.connector==='slip') geos.push(makeSlipConnectorGeo(s.shape,s.widthMm,s.heightMm,s.wallMm,s.lengthMm,s.bendDeg,s.bendAxis,s.bendStart,s.bendEnd,s.connectorLen||20,s.connectorDepth||0.3));
+
+    const geo=mergeGeos(geos);
+    const col=si===activeIdx?0xff7040:[0x3a6a8a,0x4a8aaa,0x2a5a7a,0x5a7a9a][si%4];
+    const mat=new THREE.MeshPhongMaterial({color:col,shininess:80,side:THREE.DoubleSide});
+    const mesh=new THREE.Mesh(geo,mat);
+
+    mesh.position.copy(worldPos);
+    mesh.quaternion.copy(worldQuat);
+    mesh.userData.segIdx = si;
+    meshGroup.add(mesh);
+
+    const localEnd=new THREE.Vector3(...segEndPos(s.lengthMm, s.bendDeg, s.bendAxis, s.bendStart, s.bendEnd));
+    localEnd.applyQuaternion(worldQuat);
+    worldPos=worldPos.clone().add(localEnd);
+
+    const ef=getEndFrame(s.lengthMm, s.bendDeg, s.bendAxis, s.bendStart, s.bendEnd);
+    const endMat=new THREE.Matrix4().makeBasis(ef.rVec, ef.tVec, ef.uVec);
+    const deltaQuat=new THREE.Quaternion().setFromRotationMatrix(endMat);
+    worldQuat=worldQuat.clone().multiply(deltaQuat);
+
+    // Magnet female ring: aan START van het VOLGENDE segment geplaatst,
+    // maar met de VORM van het segment waar de koppeling op is aangezet
+    // (s, niet ns) — zodat mannelijk en vrouwelijk altijd exact dezelfde
+    // vorm hebben, ongeacht de vorm van het volgende segment.
+    if(s.connector==='magnet' && si<steps.length-1) {
+      const femaleGeo=makeMagnetFemaleAtStart(
+        s.shape,s.widthMm,s.heightMm,s.wallMm,
+        s.connectorLen||10, s.magnetD||5, s.magnetCount||6, s.connectorDepth||3
+      );
+      const fCol=si+1===activeIdx?0xff7040:[0x3a6a8a,0x4a8aaa,0x2a5a7a,0x5a7a9a][(si+1)%4];
+      const fMat=new THREE.MeshPhongMaterial({color:fCol,shininess:80,side:THREE.DoubleSide});
+      const fMesh=new THREE.Mesh(femaleGeo,fMat);
+      fMesh.position.copy(worldPos);
+      fMesh.quaternion.copy(worldQuat);
+      fMesh.userData.segIdx = si+1;
+      meshGroup.add(fMesh);
+    }
+  });
+
+  // Zet de buis echt op de grond: bereken de werkelijke onderrand van
+  // de geometrie (i.p.v. een vaste gok) en verschuif de hele groep zo
+  // dat dat laagste punt precies op het rastervlak (y=-200) landt —
+  // werkt voor elke vorm, diameter en bochtconfiguratie.
+  const box = new THREE.Box3().setFromObject(meshGroup);
+  const groundY = -200;
+  meshGroup.position.y = groundY - box.min.y;
+  scene.add(meshGroup);
+}
+
+// ─── Three.js init ───────────────────────────────────────────────
+function initThree() {
+  const vp=document.querySelector('.viewport');
+  scene=new THREE.Scene();
+  scene.background=new THREE.Color(0x0d0d1e);
+  camera=new THREE.PerspectiveCamera(45,vp.clientWidth/vp.clientHeight,0.1,50000);
+  renderer=new THREE.WebGLRenderer({canvas:document.getElementById('c'),antialias:true});
+  renderer.setPixelRatio(window.devicePixelRatio);
+  resize();
+  scene.add(new THREE.AmbientLight(0xffffff,0.45));
+  const d1=new THREE.DirectionalLight(0xffffff,0.9); d1.position.set(2,3,2); scene.add(d1);
+  const d2=new THREE.DirectionalLight(0x6688ff,0.35); d2.position.set(-2,-1,-3); scene.add(d2);
+  const grid=new THREE.GridHelper(2000,30,0x222244,0x1a1a36); grid.position.y=-200; scene.add(grid);
+
+  // Asindicatoren op het rastervlak: X (rood) en Z (groen) — geven de
+  // oriëntatie van het horizontale vlak aan zodat je weet welke kant
+  // welke as is bij het instellen van de buigas.
+  const axisLen = 420;
+  function makeAxisLine(dir, color) {
+    const mat = new THREE.LineBasicMaterial({ color, linewidth: 2 });
+    const geo = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(0,-200,0),
+      new THREE.Vector3(dir.x*axisLen, -200+dir.y*axisLen, dir.z*axisLen)
+    ]);
+    return new THREE.Line(geo, mat);
+  }
+  scene.add(makeAxisLine(new THREE.Vector3(1,0,0), 0xe05a5a)); // X = rood
+  scene.add(makeAxisLine(new THREE.Vector3(0,0,1), 0x5ad08a)); // Z = groen
+
+  function makeAxisLabel(text, x, y, z, color) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 64; canvas.height = 64;
+    const ctx = canvas.getContext('2d');
+    ctx.font = 'bold 40px system-ui';
+    ctx.fillStyle = color;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, 32, 32);
+    const tex = new THREE.CanvasTexture(canvas);
+    const mat = new THREE.SpriteMaterial({ map: tex, depthTest: false });
+    const sprite = new THREE.Sprite(mat);
+    sprite.scale.set(40,40,1);
+    sprite.position.set(x,y,z);
+    return sprite;
+  }
+  scene.add(makeAxisLabel('X', axisLen+30, -200, 0, '#e05a5a'));
+  scene.add(makeAxisLabel('Z', 0, -200, axisLen+30, '#5ad08a'));
+
+  const cv=document.getElementById('c');
+  cv.addEventListener('mousedown',e=>{isDragging=true;prevMouse={x:e.clientX,y:e.clientY};});
+  window.addEventListener('mousemove',e=>{if(!isDragging)return;rotY+=(e.clientX-prevMouse.x)*0.008;rotX+=(e.clientY-prevMouse.y)*0.008;prevMouse={x:e.clientX,y:e.clientY};updateCamera();});
+  window.addEventListener('mouseup',()=>isDragging=false);
+  cv.addEventListener('wheel',e=>{e.preventDefault();zoom=Math.max(0.1,Math.min(10,zoom+e.deltaY*0.001));updateCamera();},{passive:false});
+  window.addEventListener('resize',resize);
+  (function animate(){requestAnimationFrame(animate);renderer.render(scene,camera);})();
+}
+
+function resize(){
+  const vp=document.querySelector('.viewport');
+  renderer.setSize(vp.clientWidth,vp.clientHeight);
+  camera.aspect=vp.clientWidth/vp.clientHeight;
+  camera.updateProjectionMatrix();
+}
+function updateCamera(){
+  const r=800*zoom;
+  camera.position.set(Math.sin(rotY)*Math.cos(rotX)*r,Math.sin(rotX)*r,Math.cos(rotY)*Math.cos(rotX)*r);
+  camera.lookAt(0,0,0);
+}
+function resetView(){rotX=0.4;rotY=0.6;zoom=1;updateCamera();}
+
+// ─── STL export ─────────────────────────────────────────────────
+// Bepaalt hoe de segmenten opgeknipt worden in losse printbare delen:
+// een "doorlopende" koppeling houdt twee segmenten in hetzelfde deel,
+// een magnetische of schuifkoppeling vormt een knip tussen twee delen.
+function computePartGroups() {
+  const groups = [[0]];
+  for (let i=0; i<steps.length-1; i++) {
+    if (steps[i].connector === 'none') {
+      groups[groups.length-1].push(i+1);
+    } else {
+      groups.push([i+1]);
+    }
+  }
+  return groups;
+}
+
+function buildSTLBlobForSegments(segIdxSet) {
+  const tris=[];
+  meshGroup.updateMatrixWorld(true);
+  meshGroup.traverse(obj=>{
+    if(!obj.isMesh||!obj.geometry) return;
+    if(!segIdxSet.has(obj.userData.segIdx)) return;
+    obj.updateWorldMatrix(true,false);
+    const g=obj.geometry, p=g.attributes.position, n=g.attributes.normal, ia=g.index.array;
+    const mat=obj.matrixWorld;
+    for(let i=0;i<ia.length;i+=3){
+      const a=ia[i],b=ia[i+1],c=ia[i+2];
+      const va=new THREE.Vector3(p.getX(a),p.getY(a),p.getZ(a)).applyMatrix4(mat);
+      const vb=new THREE.Vector3(p.getX(b),p.getY(b),p.getZ(b)).applyMatrix4(mat);
+      const vc=new THREE.Vector3(p.getX(c),p.getY(c),p.getZ(c)).applyMatrix4(mat);
+      const nx=(n.getX(a)+n.getX(b)+n.getX(c))/3;
+      const ny=(n.getY(a)+n.getY(b)+n.getY(c))/3;
+      const nz=(n.getZ(a)+n.getZ(b)+n.getZ(c))/3;
+      tris.push({n:[nx,ny,nz],v:[va,vb,vc]});
+    }
+  });
+  const buf=new ArrayBuffer(84+tris.length*50);
+  const dv=new DataView(buf);
+  new Uint32Array(buf,80,1)[0]=tris.length;
+  let off=84;
+  tris.forEach(t=>{
+    dv.setFloat32(off,t.n[0],true);dv.setFloat32(off+4,t.n[1],true);dv.setFloat32(off+8,t.n[2],true);off+=12;
+    t.v.forEach(v=>{dv.setFloat32(off,v.x,true);dv.setFloat32(off+4,v.y,true);dv.setFloat32(off+8,v.z,true);off+=12;});
+    dv.setUint16(off,0,true);off+=2;
+  });
+  return new Blob([buf],{type:'application/octet-stream'});
+}
+
+async function downloadSTL() {
+  const groups = computePartGroups();
+
+  if (groups.length === 1) {
+    // Enkel deel: gewoon direct als .stl downloaden, geen zip nodig.
+    const blob = buildSTLBlobForSegments(new Set(groups[0]));
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'exhaust_tube.stl';
+    a.click();
+    URL.revokeObjectURL(url);
+    return;
+  }
+
+  // Meerdere delen: bundelen in ÉÉN zip-bestand. Sommige browsers
+  // (met name Firefox) blokkeren meerdere automatische downloads na de
+  // eerste klik, zelfs met een vertraging ertussen — één zip-download
+  // werkt overal betrouwbaar hetzelfde.
+  const zip = new JSZip();
+  groups.forEach((segIndices, gi) => {
+    const blob = buildSTLBlobForSegments(new Set(segIndices));
+    zip.file(`exhaust_tube_deel${gi+1}.stl`, blob);
+  });
+  const zipBlob = await zip.generateAsync({ type: 'blob' });
+  const url = URL.createObjectURL(zipBlob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `exhaust_tube_${groups.length}_delen.zip`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+window.addEventListener('load',()=>{initThree();updateCamera();renderUI();buildMesh();});
+</script>
+</body>
+</html>
