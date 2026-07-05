@@ -91,24 +91,31 @@ input[type=checkbox] { width: 14px; height: 14px; accent-color: #4a7fa5; cursor:
 <script>
 const steps = [
   { id:1, label:'Ingang',  lengthMm:150, shape:'round', widthMm:100, heightMm:100, wallMm:3, bendDeg:0,  bendAxis:'X', bendStart:0, bendEnd:100, connector:'none',
-    flangeStart:false, flangeStartW:130, flangeStartH:130, flangeStartThick:6,
-    flangeEnd:false,   flangeEndW:130,   flangeEndH:130,   flangeEndThick:6 },
+    decoupled:false, inShape:'round', inWidthMm:100, inHeightMm:100 },
   { id:2, label:'Bocht',   lengthMm:100, shape:'round', widthMm:100, heightMm:100, wallMm:3, bendDeg:45, bendAxis:'X', bendStart:0, bendEnd:100, connector:'none',
-    flangeStart:false, flangeStartW:130, flangeStartH:130, flangeStartThick:6,
-    flangeEnd:false,   flangeEndW:130,   flangeEndH:130,   flangeEndThick:6 },
+    decoupled:false, inShape:'round', inWidthMm:100, inHeightMm:100 },
   { id:3, label:'Uitgang', lengthMm:200, shape:'rect',  widthMm:140, heightMm:80,  wallMm:3, bendDeg:0,  bendAxis:'X', bendStart:0, bendEnd:100, connector:'none',
-    flangeStart:false, flangeStartW:170, flangeStartH:110, flangeStartThick:6,
-    flangeEnd:true,     flangeEndW:170,   flangeEndH:110,   flangeEndThick:6 },
+    decoupled:false, inShape:'rect', inWidthMm:140, inHeightMm:80 },
 ];
 let nextId=4, activeIdx=0;
 let scene, camera, renderer, meshGroup;
 let isDragging=false, prevMouse={x:0,y:0};
 let rotX=0.4, rotY=0.6, zoom=1;
 
+// Bepaalt de ingang-vorm/afmetingen van een segment. Normaal wordt dit
+// overgenomen van het vorige segment (aaneengesloten buizen). Zodra dit
+// segment ZELF of het VORIGE segment "losgekoppeld" is, wordt er niet
+// overgenomen — dan gebruikt dit segment zijn eigen, onafhankelijk
+// ingestelde ingangmaat, zodat wijzigingen niet doorwerken naar de
+// vorige of volgende buis.
 function getInProps(idx) {
   if (idx===0) return { shape:steps[0].shape, w:steps[0].widthMm, h:steps[0].heightMm };
-  const p=steps[idx-1];
-  return { shape:p.shape, w:p.widthMm, h:p.heightMm };
+  const prev=steps[idx-1];
+  const cur=steps[idx];
+  if (cur.decoupled || prev.decoupled) {
+    return { shape:cur.inShape||prev.shape, w:cur.inWidthMm||prev.widthMm, h:cur.inHeightMm||prev.heightMm };
+  }
+  return { shape:prev.shape, w:prev.widthMm, h:prev.heightMm };
 }
 
 function addStep() {
@@ -116,8 +123,7 @@ function addStep() {
   steps.push({ id:nextId++, label:'Segment '+(nextId-1), lengthMm:150,
     shape:p.shape, widthMm:p.widthMm, heightMm:p.heightMm,
     wallMm:p.wallMm, bendDeg:0, bendAxis:'X', bendStart:0, bendEnd:100, connector:'none',
-    flangeStart:false, flangeStartW:p.widthMm+30, flangeStartH:p.heightMm+30, flangeStartThick:6,
-    flangeEnd:false,   flangeEndW:p.widthMm+30,   flangeEndH:p.heightMm+30,   flangeEndThick:6 });
+    decoupled:false, inShape:p.shape, inWidthMm:p.widthMm, inHeightMm:p.heightMm });
   activeIdx=steps.length-1;
   renderUI(); buildMesh();
 }
@@ -147,7 +153,7 @@ function renderUI() {
     const d=document.createElement('div');
     d.className='step-card'+(i===activeIdx?' active':'');
     d.onclick=()=>selectStep(i);
-    d.innerHTML=`<div class="step-card-header"><span class="step-label">${i===0?'① ':i===steps.length-1?'⑥ ':'↓ '}${s.label}</span><button class="btn-remove" onclick="removeStep(${i},event)">✕</button></div><div class="step-dims">${dims}${s.connector==='magnet'?' · 🔵 magneet':s.connector==='slip'?' · ⟶ schuif':''}${s.flangeStart?' · ring-begin':''}${s.flangeEnd?' · ring-eind':''}</div>`;
+    d.innerHTML=`<div class="step-card-header"><span class="step-label">${i===0?'① ':i===steps.length-1?'⑥ ':'↓ '}${s.label}</span><button class="btn-remove" onclick="removeStep(${i},event)">✕</button></div><div class="step-dims">${dims}${s.connector==='magnet'?' · 🔵 magneet':s.connector==='slip'?' · ⟶ schuif':''}${s.decoupled?' · ⊘ losgekoppeld':''}</div>`;
     list.appendChild(d);
   });
   document.getElementById('seg-count').textContent=steps.length+' segm.';
@@ -197,22 +203,29 @@ function renderEditor() {
   const axisBtn = (ax,label) =>
     `<button class="shape-btn${s.bendAxis===ax?' active':''}" onclick="upd('bendAxis','${ax}')">${label}</button>`;
 
-  // Als het VORIGE segment een schuifkoppeling heeft, steekt de sok een
-  // stuk in dit segment. Een rechte sok kan niet meebuigen, dus dit
-  // segment mag pas ná de soklengte beginnen te buigen — vandaar een
-  // minimum op "Start bocht" (%) op basis van die soklengte.
+  // Als het VORIGE segment een schuif- of magnetische koppeling heeft,
+  // gaat die uit van een RECHTE buis over zijn eigen soklengte/ringdikte.
+  // Dit segment mag pas ná die lengte beginnen te buigen — vandaar een
+  // minimum op "Start bocht" (%).
   let minBendStartPct = 0;
   let slipNoticeHtml = '';
   if (!isFirst) {
     const prev = steps[activeIdx-1];
+    let requiredMm = 0, reason = '';
     if (prev.connector === 'slip') {
-      const sokLen = prev.connectorLen || 20;
-      minBendStartPct = Math.min(99, Math.ceil((sokLen / s.lengthMm) * 100));
+      requiredMm = prev.connectorLen || 20;
+      reason = `Sok van vorig segment steekt ${requiredMm}mm hierin`;
+    } else if (prev.connector === 'magnet') {
+      requiredMm = Math.max(prev.connectorLen||10, prev.connectorDepth||3);
+      reason = `Magnetische ring van vorig segment gaat ${requiredMm}mm hierin uit van een rechte buis`;
+    }
+    if (requiredMm > 0) {
+      minBendStartPct = Math.min(99, Math.ceil((requiredMm / s.lengthMm) * 100));
       if (s.bendStart < minBendStartPct) {
         s.bendStart = minBendStartPct;
         if (s.bendEnd <= s.bendStart) s.bendEnd = Math.min(100, s.bendStart+1);
       }
-      slipNoticeHtml = `<div class="inherited-badge" style="background:#2a2010;border-color:#4a3a1a;color:#c0a05a">⟶ Sok van vorig segment steekt ${sokLen}mm hierin — "Start bocht" kan niet lager dan ${minBendStartPct}% (anders buigt de rechte sok mee).</div>`;
+      slipNoticeHtml = `<div class="inherited-badge" style="background:#2a2010;border-color:#4a3a1a;color:#c0a05a">⟶ ${reason} — "Start bocht" kan niet lager dan ${minBendStartPct}% (anders wijkt de buis af van de ring/sok).</div>`;
     }
   }
 
@@ -301,26 +314,21 @@ function renderEditor() {
     <div style="font-size:11px;color:#5a7a9a;margin-bottom:8px;line-height:1.6;background:#1a2030;border-radius:5px;padding:7px 10px;border:1px solid #2a3a5a">
       ↔ <b>Speling</b> = ruimte aan elke kant tussen de buitenwand van het volgende segment en de binnenwand van de sok. Bij 0.3mm past de sok er licht strak omheen — ideaal voor lijm. Groter = losser; kleiner = heel strak (kan lastig printen).
     </div>`:''}
-    <div class="section-title">Ring aan begin segment</div>
-    <div class="toggle-row"><input type="checkbox" id="flS" ${s.flangeStart?'checked':''} onchange="upd('flangeStart',this.checked)"><label for="flS">Ring aan begin</label></div>
-    ${s.flangeStart?`<div class="field-row">
-      <div class="field"><label>Breedte (mm)</label><input type="number" min="${s.widthMm+2}" max="2000" step="1" value="${s.flangeStartW||s.widthMm+30}" oninput="upd('flangeStartW',+this.value)"></div>
-      <div class="field"><label>Hoogte (mm)</label><input type="number" min="${s.heightMm+2}" max="2000" step="1" value="${s.flangeStartH||s.heightMm+30}" oninput="upd('flangeStartH',+this.value)"></div>
+    <div class="section-title">Losgekoppelde modus</div>
+    <div class="toggle-row"><input type="checkbox" id="decoup" ${s.decoupled?'checked':''} onchange="upd('decoupled',this.checked)"><label for="decoup">Losgekoppeld</label></div>
+    <div style="font-size:11px;color:#555577;margin-bottom:8px;line-height:1.5">
+      Zodra dit aan staat, wordt de ingang-afmeting van dit segment NIET meer overgenomen van het vorige segment, en werken wijzigingen aan dit segment niet meer door naar het volgende segment. Handig voor losstaande onderdelen die niet naadloos hoeven aan te sluiten.
+    </div>
+    ${(s.decoupled || (activeIdx>0 && steps[activeIdx-1].decoupled)) ? `
+    <div class="section-title">Eigen ingang-vorm (onafhankelijk)</div>
+    <div class="shape-picker">
+      <button class="shape-btn${s.inShape==='round'?' active':''}" onclick="setInShape('round')">${shapeIcon('round')}Rond</button>
+      <button class="shape-btn${s.inShape==='square'?' active':''}" onclick="setInShape('square')">${shapeIcon('square')}Vierkant</button>
+      <button class="shape-btn${s.inShape==='rect'?' active':''}" onclick="setInShape('rect')">${shapeIcon('rect')}Rechthoek</button>
     </div>
     <div class="field-row">
-      <div class="field"><label>Dikte (mm)</label><input type="number" min="0.5" max="50" step="0.5" value="${s.flangeStartThick||6}" oninput="upd('flangeStartThick',+this.value)"></div>
-      <div class="field"></div>
-    </div>`:''}
-
-    <div class="section-title">Ring aan einde segment</div>
-    <div class="toggle-row"><input type="checkbox" id="flE" ${s.flangeEnd?'checked':''} onchange="upd('flangeEnd',this.checked)"><label for="flE">Ring aan einde</label></div>
-    ${s.flangeEnd?`<div class="field-row">
-      <div class="field"><label>Breedte (mm)</label><input type="number" min="${s.widthMm+2}" max="2000" step="1" value="${s.flangeEndW||s.widthMm+30}" oninput="upd('flangeEndW',+this.value)"></div>
-      <div class="field"><label>Hoogte (mm)</label><input type="number" min="${s.heightMm+2}" max="2000" step="1" value="${s.flangeEndH||s.heightMm+30}" oninput="upd('flangeEndH',+this.value)"></div>
-    </div>
-    <div class="field-row">
-      <div class="field"><label>Dikte (mm)</label><input type="number" min="0.5" max="50" step="0.5" value="${s.flangeEndThick||6}" oninput="upd('flangeEndThick',+this.value)"></div>
-      <div class="field"></div>
+      <div class="field"><label>${s.inShape==='round'?'Diameter (mm)':'Breedte (mm)'}</label><input type="number" min="10" max="1000" step="1" value="${s.inWidthMm||100}" oninput="updInShape('inWidthMm',+this.value)"></div>
+      <div class="field"><label>Hoogte (mm)</label><input type="number" min="10" max="1000" step="1" value="${s.inHeightMm||100}" ${s.inShape!=='rect'?'readonly':''} oninput="updInShape('inHeightMm',+this.value)"></div>
     </div>`:''}`;
 }
 
@@ -334,6 +342,18 @@ function updShape(key,val) {
   const s=steps[activeIdx];
   s[key]=val;
   if(s.shape!=='rect') s.heightMm=s.widthMm;
+  renderUI(); buildMesh();
+}
+function setInShape(shape) {
+  const s=steps[activeIdx];
+  s.inShape=shape;
+  if(shape!=='rect') s.inHeightMm=s.inWidthMm;
+  renderUI(); buildMesh();
+}
+function updInShape(key,val) {
+  const s=steps[activeIdx];
+  s[key]=val;
+  if(s.inShape!=='rect') s.inHeightMm=s.inWidthMm;
   renderUI(); buildMesh();
 }
 function updClamp(key,val,mn,mx){ steps[activeIdx][key]=Math.min(mx,Math.max(mn,val)); renderUI(); buildMesh(); }
@@ -554,64 +574,6 @@ function getEndFrame(len, bendDeg, bendAxis, bendStart, bendEnd) {
     tVec=newT.clone();
   }
   return {pos:segLocalPos(1,len,bendDeg,bendAxis,bendStart,bendEnd),tVec,rVec,uVec};
-}
-
-function makeFlangeGeo(shape, w, h, len, bendDeg, bendAxis, bendStart, bendEnd, flangeW, flangeH, flangeThick, atStart) {
-  const ft = Math.max(0.5, flangeThick||6);
-  const N = shape==='round' ? 32 : 4;
-  const frame = atStart
-    ? { pos:[0,0,0], tVec:new THREE.Vector3(0,1,0), rVec:new THREE.Vector3(1,0,0), uVec:new THREE.Vector3(0,0,1) }
-    : getEndFrame(len,bendDeg,bendAxis,bendStart,bendEnd);
-  const { pos:ep, tVec:fwdV, rVec:right, uVec:up2 } = frame;
-  // Groeit NAAR de buis toe (zoals de magnetische koppeling): bij start
-  // de buis IN (voorwaarts vanaf het beginpunt), bij einde de buis IN
-  // (achterwaarts vanaf het eindpunt) — de ring blijft dus om de buis
-  // heen zitten in plaats van los ervan af te bewegen.
-  const sign = atStart ? 1 : -1;
-
-  // Binnenboring volgt de ECHTE buisvorm (rond/vierkant/rechthoek), zodat
-  // de ring altijd exact om de buis sluit.
-  function innerRing(offset){
-    const pts=makeProfile(shape,w,h,0,false);
-    const rp=resampleProfile(pts,N);
-    return rp.map(([px,py])=>[
-      ep[0]+right.x*px+up2.x*py+fwdV.x*offset*sign,
-      ep[1]+right.y*px+up2.y*py+fwdV.y*offset*sign,
-      ep[2]+right.z*px+up2.z*py+fwdV.z*offset*sign
-    ]);
-  }
-  // Buitenrand is ALTIJD een rechthoek-profiel (los van de buisvorm),
-  // zodat breedte en hoogte altijd onafhankelijk werken — ook als de
-  // buis zelf rond of vierkant is (waar "hoogte" anders genegeerd wordt).
-  const fw = Math.max(flangeW||w+30, w+2);
-  const fh = Math.max(flangeH||h+30, h+2);
-  function outerRing(offset){
-    const pts=makeProfile('rect',fw,fh,0,false);
-    const rp=resampleProfile(pts,N);
-    return rp.map(([px,py])=>[
-      ep[0]+right.x*px+up2.x*py+fwdV.x*offset*sign,
-      ep[1]+right.y*px+up2.y*py+fwdV.y*offset*sign,
-      ep[2]+right.z*px+up2.z*py+fwdV.z*offset*sign
-    ]);
-  }
-
-  const or0=outerRing(0), ir0=innerRing(0);
-  const or1=outerRing(ft), ir1=innerRing(ft);
-  const verts=[], idx2=[];
-  [...or0,...ir0,...or1,...ir1].forEach(p=>verts.push(...p));
-  for(let k=0;k<N;k++){
-    const n=(k+1)%N;
-    idx2.push(k,n,N+n, k,N+n,N+k);
-    idx2.push(2*N+k,3*N+k,3*N+n, 2*N+k,3*N+n,2*N+n);
-    idx2.push(k,2*N+k,2*N+n, k,2*N+n,n);
-    idx2.push(N+k,N+n,3*N+n, N+k,3*N+n,3*N+k);
-    idx2.push(k,N+k,3*N+k, k,3*N+k,2*N+k);
-    idx2.push(n,2*N+n,3*N+n, n,3*N+n,N+n);
-  }
-  const geo=new THREE.BufferGeometry();
-  geo.setAttribute('position',new THREE.Float32BufferAttribute(verts.flat(),3));
-  geo.setIndex(idx2); geo.computeVertexNormals();
-  return geo;
 }
 
 // ─── Connector geometry ──────────────────────────────────────────
@@ -980,10 +942,21 @@ function mergeGeos(geos) {
 function enforceSlipBendConstraints() {
   for (let i=1; i<steps.length; i++) {
     const prev = steps[i-1];
-    if (prev.connector !== 'slip') continue;
     const s = steps[i];
-    const sokLen = prev.connectorLen || 20;
-    const minPct = Math.min(99, Math.ceil((sokLen / s.lengthMm) * 100));
+    let requiredStraightMm = 0;
+    if (prev.connector === 'slip') {
+      // De sok van de schuifkoppeling steekt recht in dit segment.
+      requiredStraightMm = Math.max(requiredStraightMm, prev.connectorLen || 20);
+    }
+    if (prev.connector === 'magnet') {
+      // De magnetische ring gaat uit van een RECHTE buis over zijn
+      // volledige ringdikte — als dit segment binnen die diepte al
+      // buigt, wijkt de echte buis af van de ring en ontstaat een kier.
+      const ringAxLen = Math.max(prev.connectorLen||10, prev.connectorDepth||3);
+      requiredStraightMm = Math.max(requiredStraightMm, ringAxLen);
+    }
+    if (requiredStraightMm <= 0) continue;
+    const minPct = Math.min(99, Math.ceil((requiredStraightMm / s.lengthMm) * 100));
     if (s.bendStart < minPct) {
       s.bendStart = minPct;
       if (s.bendEnd <= s.bendStart) s.bendEnd = Math.min(100, s.bendStart+1);
@@ -1012,8 +985,7 @@ function buildMesh() {
       s.shape, s.widthMm, s.heightMm,
       s.wallMm, s.lengthMm, s.bendDeg, s.bendAxis, s.bendStart, s.bendEnd
     ));
-    if(s.flangeStart) geos.push(makeFlangeGeo(inp.shape,inp.w,inp.h,s.lengthMm,s.bendDeg,s.bendAxis,s.bendStart,s.bendEnd,s.flangeStartW,s.flangeStartH,s.flangeStartThick,true));
-    if(s.flangeEnd)   geos.push(makeFlangeGeo(s.shape,s.widthMm,s.heightMm,s.lengthMm,s.bendDeg,s.bendAxis,s.bendStart,s.bendEnd,s.flangeEndW,s.flangeEndH,s.flangeEndThick,false));
+
 
     // Magnetische koppeling: ring aan einde van dit segment (mannelijk)
     if(s.connector==='magnet') {
