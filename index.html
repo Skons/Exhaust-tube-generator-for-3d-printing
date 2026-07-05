@@ -90,9 +90,15 @@ input[type=checkbox] { width: 14px; height: 14px; accent-color: #4a7fa5; cursor:
 
 <script>
 const steps = [
-  { id:1, label:'Ingang',  lengthMm:150, shape:'round', widthMm:100, heightMm:100, wallMm:3, bendDeg:0,  bendAxis:'X', bendStart:0, bendEnd:100, connector:'none', flange:false },
-  { id:2, label:'Bocht',   lengthMm:100, shape:'round', widthMm:100, heightMm:100, wallMm:3, bendDeg:45, bendAxis:'X', bendStart:0, bendEnd:100, connector:'none', flange:false },
-  { id:3, label:'Uitgang', lengthMm:200, shape:'rect',  widthMm:140, heightMm:80,  wallMm:3, bendDeg:0,  bendAxis:'X', bendStart:0, bendEnd:100, connector:'none', flange:true  },
+  { id:1, label:'Ingang',  lengthMm:150, shape:'round', widthMm:100, heightMm:100, wallMm:3, bendDeg:0,  bendAxis:'X', bendStart:0, bendEnd:100, connector:'none',
+    flangeStart:false, flangeStartW:130, flangeStartH:130, flangeStartThick:6,
+    flangeEnd:false,   flangeEndW:130,   flangeEndH:130,   flangeEndThick:6 },
+  { id:2, label:'Bocht',   lengthMm:100, shape:'round', widthMm:100, heightMm:100, wallMm:3, bendDeg:45, bendAxis:'X', bendStart:0, bendEnd:100, connector:'none',
+    flangeStart:false, flangeStartW:130, flangeStartH:130, flangeStartThick:6,
+    flangeEnd:false,   flangeEndW:130,   flangeEndH:130,   flangeEndThick:6 },
+  { id:3, label:'Uitgang', lengthMm:200, shape:'rect',  widthMm:140, heightMm:80,  wallMm:3, bendDeg:0,  bendAxis:'X', bendStart:0, bendEnd:100, connector:'none',
+    flangeStart:false, flangeStartW:170, flangeStartH:110, flangeStartThick:6,
+    flangeEnd:true,     flangeEndW:170,   flangeEndH:110,   flangeEndThick:6 },
 ];
 let nextId=4, activeIdx=0;
 let scene, camera, renderer, meshGroup;
@@ -109,7 +115,9 @@ function addStep() {
   const p=steps[steps.length-1];
   steps.push({ id:nextId++, label:'Segment '+(nextId-1), lengthMm:150,
     shape:p.shape, widthMm:p.widthMm, heightMm:p.heightMm,
-    wallMm:p.wallMm, bendDeg:0, bendAxis:'X', bendStart:0, bendEnd:100, connector:'none', flange:false });
+    wallMm:p.wallMm, bendDeg:0, bendAxis:'X', bendStart:0, bendEnd:100, connector:'none',
+    flangeStart:false, flangeStartW:p.widthMm+30, flangeStartH:p.heightMm+30, flangeStartThick:6,
+    flangeEnd:false,   flangeEndW:p.widthMm+30,   flangeEndH:p.heightMm+30,   flangeEndThick:6 });
   activeIdx=steps.length-1;
   renderUI(); buildMesh();
 }
@@ -139,7 +147,7 @@ function renderUI() {
     const d=document.createElement('div');
     d.className='step-card'+(i===activeIdx?' active':'');
     d.onclick=()=>selectStep(i);
-    d.innerHTML=`<div class="step-card-header"><span class="step-label">${i===0?'① ':i===steps.length-1?'⑥ ':'↓ '}${s.label}</span><button class="btn-remove" onclick="removeStep(${i},event)">✕</button></div><div class="step-dims">${dims}${s.connector==='magnet'?' · 🔵 magneet':s.connector==='slip'?' · ⟶ schuif':''}${s.flange?' · flens':''}</div>`;
+    d.innerHTML=`<div class="step-card-header"><span class="step-label">${i===0?'① ':i===steps.length-1?'⑥ ':'↓ '}${s.label}</span><button class="btn-remove" onclick="removeStep(${i},event)">✕</button></div><div class="step-dims">${dims}${s.connector==='magnet'?' · 🔵 magneet':s.connector==='slip'?' · ⟶ schuif':''}${s.flangeStart?' · ring-begin':''}${s.flangeEnd?' · ring-eind':''}</div>`;
     list.appendChild(d);
   });
   document.getElementById('seg-count').textContent=steps.length+' segm.';
@@ -276,11 +284,11 @@ function renderEditor() {
     ${s.connector==='magnet'?`
     <div class="field-row" style="margin-top:6px">
       <div class="field"><label>Ringdikte (mm)</label><input type="number" min="2" max="20" step="0.5" value="${s.connectorLen||8}" oninput="upd('connectorLen',+this.value)"></div>
-      <div class="field"><label>Magneet ⌀ (mm)</label><input type="number" min="1" max="20" step="0.5" value="${s.magnetD||5}" oninput="upd('magnetD',+this.value)"></div>
+      <div class="field"><label>Magneet ⌀ (mm)</label><input type="number" min="1" max="20" step="0.1" value="${s.magnetD||5}" oninput="upd('magnetD',+this.value)"></div>
     </div>
     <div class="field-row">
       <div class="field"><label>Aantal magneten</label><input type="number" min="2" max="24" step="1" value="${s.magnetCount||6}" oninput="upd('magnetCount',+this.value)"></div>
-      <div class="field"><label>Magneet dikte (mm)</label><input type="number" min="1" max="15" step="0.5" value="${s.connectorDepth||3}" oninput="upd('connectorDepth',+this.value)"></div>
+      <div class="field"><label>Magneet dikte (mm)</label><input type="number" min="1" max="15" step="0.1" value="${s.connectorDepth||3}" oninput="upd('connectorDepth',+this.value)"></div>
     </div>
     <div style="font-size:11px;color:#5a7a9a;margin-bottom:8px;line-height:1.6;background:#1a2030;border-radius:5px;padding:7px 10px;border:1px solid #2a3a5a">
       🧲 Een platte ring om de buis met een golvende buitenrand — elke bult bevat een rond magneetgat. Het volgende segment krijgt dezelfde ring aan zijn begin, zodat de golven en magneten precies in elkaar passen. De ringdikte past zich automatisch aan als de magneet dikker is dan de ingestelde ringdikte.
@@ -293,8 +301,27 @@ function renderEditor() {
     <div style="font-size:11px;color:#5a7a9a;margin-bottom:8px;line-height:1.6;background:#1a2030;border-radius:5px;padding:7px 10px;border:1px solid #2a3a5a">
       ↔ <b>Speling</b> = ruimte aan elke kant tussen de buitenwand van het volgende segment en de binnenwand van de sok. Bij 0.3mm past de sok er licht strak omheen — ideaal voor lijm. Groter = losser; kleiner = heel strak (kan lastig printen).
     </div>`:''}
-    <div class="section-title">Overige opties</div>
-    <div class="toggle-row"><input type="checkbox" id="fl" ${s.flange?'checked':''} onchange="upd('flange',this.checked)"><label for="fl">Flens aan einde</label></div>`;
+    <div class="section-title">Ring aan begin segment</div>
+    <div class="toggle-row"><input type="checkbox" id="flS" ${s.flangeStart?'checked':''} onchange="upd('flangeStart',this.checked)"><label for="flS">Ring aan begin</label></div>
+    ${s.flangeStart?`<div class="field-row">
+      <div class="field"><label>Breedte (mm)</label><input type="number" min="${s.widthMm+2}" max="2000" step="1" value="${s.flangeStartW||s.widthMm+30}" oninput="upd('flangeStartW',+this.value)"></div>
+      <div class="field"><label>Hoogte (mm)</label><input type="number" min="${s.heightMm+2}" max="2000" step="1" value="${s.flangeStartH||s.heightMm+30}" oninput="upd('flangeStartH',+this.value)"></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>Dikte (mm)</label><input type="number" min="0.5" max="50" step="0.5" value="${s.flangeStartThick||6}" oninput="upd('flangeStartThick',+this.value)"></div>
+      <div class="field"></div>
+    </div>`:''}
+
+    <div class="section-title">Ring aan einde segment</div>
+    <div class="toggle-row"><input type="checkbox" id="flE" ${s.flangeEnd?'checked':''} onchange="upd('flangeEnd',this.checked)"><label for="flE">Ring aan einde</label></div>
+    ${s.flangeEnd?`<div class="field-row">
+      <div class="field"><label>Breedte (mm)</label><input type="number" min="${s.widthMm+2}" max="2000" step="1" value="${s.flangeEndW||s.widthMm+30}" oninput="upd('flangeEndW',+this.value)"></div>
+      <div class="field"><label>Hoogte (mm)</label><input type="number" min="${s.heightMm+2}" max="2000" step="1" value="${s.flangeEndH||s.heightMm+30}" oninput="upd('flangeEndH',+this.value)"></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>Dikte (mm)</label><input type="number" min="0.5" max="50" step="0.5" value="${s.flangeEndThick||6}" oninput="upd('flangeEndThick',+this.value)"></div>
+      <div class="field"></div>
+    </div>`:''}`;
 }
 
 function setShape(shape) {
@@ -529,24 +556,47 @@ function getEndFrame(len, bendDeg, bendAxis, bendStart, bendEnd) {
   return {pos:segLocalPos(1,len,bendDeg,bendAxis,bendStart,bendEnd),tVec,rVec,uVec};
 }
 
-function makeFlangeGeo(shape, w, h, wall, len, bendDeg, bendAxis, bendStart, bendEnd) {
-  const ft=wall*2;
-  const N=shape==='round'?32:4;
-  const {pos:ep, tVec:fwdV, rVec:right, uVec:up2}=getEndFrame(len,bendDeg,bendAxis,bendStart,bendEnd);
+function makeFlangeGeo(shape, w, h, len, bendDeg, bendAxis, bendStart, bendEnd, flangeW, flangeH, flangeThick, atStart) {
+  const ft = Math.max(0.5, flangeThick||6);
+  const N = shape==='round' ? 32 : 4;
+  const frame = atStart
+    ? { pos:[0,0,0], tVec:new THREE.Vector3(0,1,0), rVec:new THREE.Vector3(1,0,0), uVec:new THREE.Vector3(0,0,1) }
+    : getEndFrame(len,bendDeg,bendAxis,bendStart,bendEnd);
+  const { pos:ep, tVec:fwdV, rVec:right, uVec:up2 } = frame;
+  // Groeit NAAR de buis toe (zoals de magnetische koppeling): bij start
+  // de buis IN (voorwaarts vanaf het beginpunt), bij einde de buis IN
+  // (achterwaarts vanaf het eindpunt) — de ring blijft dus om de buis
+  // heen zitten in plaats van los ervan af te bewegen.
+  const sign = atStart ? 1 : -1;
 
-  function ring(ow,oh,offset){
-    const pts=makeProfile(shape,ow,oh,0,false);
+  // Binnenboring volgt de ECHTE buisvorm (rond/vierkant/rechthoek), zodat
+  // de ring altijd exact om de buis sluit.
+  function innerRing(offset){
+    const pts=makeProfile(shape,w,h,0,false);
     const rp=resampleProfile(pts,N);
     return rp.map(([px,py])=>[
-      ep[0]+right.x*px+up2.x*py+fwdV.x*offset,
-      ep[1]+right.y*px+up2.y*py+fwdV.y*offset,
-      ep[2]+right.z*px+up2.z*py+fwdV.z*offset
+      ep[0]+right.x*px+up2.x*py+fwdV.x*offset*sign,
+      ep[1]+right.y*px+up2.y*py+fwdV.y*offset*sign,
+      ep[2]+right.z*px+up2.z*py+fwdV.z*offset*sign
+    ]);
+  }
+  // Buitenrand is ALTIJD een rechthoek-profiel (los van de buisvorm),
+  // zodat breedte en hoogte altijd onafhankelijk werken — ook als de
+  // buis zelf rond of vierkant is (waar "hoogte" anders genegeerd wordt).
+  const fw = Math.max(flangeW||w+30, w+2);
+  const fh = Math.max(flangeH||h+30, h+2);
+  function outerRing(offset){
+    const pts=makeProfile('rect',fw,fh,0,false);
+    const rp=resampleProfile(pts,N);
+    return rp.map(([px,py])=>[
+      ep[0]+right.x*px+up2.x*py+fwdV.x*offset*sign,
+      ep[1]+right.y*px+up2.y*py+fwdV.y*offset*sign,
+      ep[2]+right.z*px+up2.z*py+fwdV.z*offset*sign
     ]);
   }
 
-  const fw=w+ft*2, fh=h+ft*2;
-  const or0=ring(fw,fh,0), ir0=ring(w,h,0);
-  const or1=ring(fw,fh,ft), ir1=ring(w,h,ft);
+  const or0=outerRing(0), ir0=innerRing(0);
+  const or1=outerRing(ft), ir1=innerRing(ft);
   const verts=[], idx2=[];
   [...or0,...ir0,...or1,...ir1].forEach(p=>verts.push(...p));
   for(let k=0;k<N;k++){
@@ -783,26 +833,28 @@ function makeMagneticCouplingGeo(shape, w, h, wall,
   allGeos.push(buildCapWithHoles(0, false, true));     // naad-kant: MET gaten (magneten raken elkaar)
   allGeos.push(buildCapWithHoles(axLen, true, false)); // diepe kant: VOLLEDIG DICHT (gesloten achterkant)
 
-  // Gatwand: verbindt de rand van het gat in de naad-dop met het vlak
-  // van de gesloten diepe dop, zodat het bakje netjes afgesloten is aan
-  // de achterkant — de magneet valt erin vanaf de naad-kant en heeft
-  // daar steun tegen de gesloten bodem.
+  // Gatwand + bodem: de diepte van het bakje volgt nu ALTIJD exact de
+  // ingestelde Magneet dikte, ongeacht hoe groot de Ringdikte is. Loopt
+  // Ringdikte verder door dan de magneet dik is, dan blijft dat extra
+  // stuk gewoon massief materiaal achter de bodem — de bakjesdiepte zelf
+  // verandert niet mee met Ringdikte.
   for (const mp of magnetPositions) {
-    allGeos.push(makePocketGeo(ep, right, up2, fwdV, sign, mp, pocketR, axLen, Np));
+    allGeos.push(makePocketGeo(ep, right, up2, fwdV, sign, mp, pocketR, magnetThick, Np));
   }
 
   return mergeGeos(allGeos);
 }
 
-// Wand van één rond gat op een gegeven lokaal 2D-punt (px,py), vanaf de
-// naad-kant tot aan de gesloten diepe kant (die al dichtgemaakt is door
-// de solide dop hierboven — deze wand vult alleen de zijkant van het gat).
-function makePocketGeo(ep, right, up2, fwdV, sign, p2d, pocketR, throughDepth, Np) {
+// Wand + bodem van één rond bakje op een gegeven lokaal 2D-punt (px,py):
+// open aan de naad-kant, met een ECHTE gesloten bodem op precies de
+// ingestelde diepte (depth = Magneet dikte) — niet gekoppeld aan de
+// Ringdikte van de rest van de koppeling.
+function makePocketGeo(ep, right, up2, fwdV, sign, p2d, pocketR, depth, Np) {
   Np = Np || 24;
   // Zelfde 2D-basis (right, up2) en dezelfde hoekvolgorde als de
   // magneetgaten in buildCapWithHoles — zo vallen de randen exact op
   // elkaar, geen geroteerde mismatch meer tussen wand en doprand.
-  const rimNear=[], rimFar=[];
+  const rimNear=[], rimFloor=[];
   for (let i=0;i<Np;i++){
     // Zelfde volgorde als de hole-ring in buildCapWithHoles: i van Np-1 naar 0
     const ii = Np-1-i;
@@ -815,22 +867,32 @@ function makePocketGeo(ep, right, up2, fwdV, sign, p2d, pocketR, throughDepth, N
       ep[2] + right.z*px + up2.z*py,
     ];
     rimNear.push(near);
-    // Andere kant: volledig door de Ringdikte heen (-sign, de eigen buis in)
-    rimFar.push([
-      near[0] - fwdV.x*throughDepth*sign,
-      near[1] - fwdV.y*throughDepth*sign,
-      near[2] - fwdV.z*throughDepth*sign,
+    // Bodem op exact 'depth' (Magneet dikte), niet op de volledige Ringdikte
+    rimFloor.push([
+      near[0] - fwdV.x*depth*sign,
+      near[1] - fwdV.y*depth*sign,
+      near[2] - fwdV.z*depth*sign,
     ]);
   }
+  // Middelpunt van de bodem, voor de dichte bodemschijf
+  const floorCentre = [
+    ep[0] + right.x*p2d[0] + up2.x*p2d[1] - fwdV.x*depth*sign,
+    ep[1] + right.y*p2d[0] + up2.y*p2d[1] - fwdV.y*depth*sign,
+    ep[2] + right.z*p2d[0] + up2.z*p2d[1] - fwdV.z*depth*sign,
+  ];
 
   const verts=[], idx=[];
   rimNear.forEach(p=>verts.push(...p));
-  rimFar.forEach(p=>verts.push(...p));
+  rimFloor.forEach(p=>verts.push(...p));
+  verts.push(floorCentre);
+  const floorCentreIdx = 2*Np;
 
   for (let i=0;i<Np;i++){
     const n=(i+1)%Np;
-    // Alleen de wand van het gat (geen bodem/dop aan weerskanten — open aan beide zijden)
+    // Wand van de opening naar de bodemrand
     idx.push(i, Np+n, Np+i, i, n, Np+n);
+    // Dichte bodemschijf (waaier naar het middelpunt)
+    idx.push(floorCentreIdx, Np+i, Np+n);
   }
 
   const geo = new THREE.BufferGeometry();
@@ -950,7 +1012,8 @@ function buildMesh() {
       s.shape, s.widthMm, s.heightMm,
       s.wallMm, s.lengthMm, s.bendDeg, s.bendAxis, s.bendStart, s.bendEnd
     ));
-    if(s.flange) geos.push(makeFlangeGeo(s.shape,s.widthMm,s.heightMm,s.wallMm,s.lengthMm,s.bendDeg,s.bendAxis,s.bendStart,s.bendEnd));
+    if(s.flangeStart) geos.push(makeFlangeGeo(inp.shape,inp.w,inp.h,s.lengthMm,s.bendDeg,s.bendAxis,s.bendStart,s.bendEnd,s.flangeStartW,s.flangeStartH,s.flangeStartThick,true));
+    if(s.flangeEnd)   geos.push(makeFlangeGeo(s.shape,s.widthMm,s.heightMm,s.lengthMm,s.bendDeg,s.bendAxis,s.bendStart,s.bendEnd,s.flangeEndW,s.flangeEndH,s.flangeEndThick,false));
 
     // Magnetische koppeling: ring aan einde van dit segment (mannelijk)
     if(s.connector==='magnet') {
