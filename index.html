@@ -29,6 +29,12 @@ header span { font-size: 11px; color: #555577; }
 .step-dims { font-size: 11px; color: #555577; }
 .btn-remove { background: none; border: none; cursor: pointer; color: #555577; padding: 2px 4px; font-size: 13px; border-radius: 4px; }
 .btn-remove:hover { color: #e06060; background: #2a1818; }
+.step-card-btns { display: flex; align-items: center; gap: 2px; }
+.btn-visible { background: none; border: none; cursor: pointer; color: #555577; padding: 2px 4px; font-size: 13px; border-radius: 4px; }
+.area-warn { color: #e0a040; font-size: 13px; padding: 0 2px; }
+.btn-visible:hover { color: #6aacda; background: #18202a; }
+.step-card.hidden-seg { opacity: 0.45; }
+.step-card.hidden-seg .step-label { text-decoration: line-through; }
 .add-btn { margin: 6px 8px; padding: 8px; background: none; border: 1px dashed #2a2a4a; border-radius: 6px; color: #666688; cursor: pointer; font-size: 13px; width: calc(100% - 16px); transition: all 0.15s; flex-shrink: 0; }
 .add-btn:hover { background: #1c1c38; color: #a0a0c0; border-color: #3a3a6a; }
 .editor { border-top: 1px solid #2a2a4a; padding: 12px; background: #111126; flex: 1; overflow-y: auto; }
@@ -90,11 +96,11 @@ input[type=checkbox] { width: 14px; height: 14px; accent-color: #4a7fa5; cursor:
 
 <script>
 const steps = [
-  { id:1, label:'Ingang',  lengthMm:150, shape:'round', widthMm:100, heightMm:100, wallMm:3, bendDeg:0,  bendAxis:'X', bendStart:0, bendEnd:100, connector:'none',
+  { id:1, label:'Ingang',  lengthMm:150, shape:'round', widthMm:100, heightMm:100, wallMm:3, bendDeg:0,  bendAxis:'X', bendStart:0, bendEnd:100, connector:'none', visible:true,
     decoupled:false, inShape:'round', inWidthMm:100, inHeightMm:100 },
-  { id:2, label:'Bocht',   lengthMm:100, shape:'round', widthMm:100, heightMm:100, wallMm:3, bendDeg:45, bendAxis:'X', bendStart:0, bendEnd:100, connector:'none',
+  { id:2, label:'Bocht',   lengthMm:100, shape:'round', widthMm:100, heightMm:100, wallMm:3, bendDeg:45, bendAxis:'X', bendStart:0, bendEnd:100, connector:'none', visible:true,
     decoupled:false, inShape:'round', inWidthMm:100, inHeightMm:100 },
-  { id:3, label:'Uitgang', lengthMm:200, shape:'rect',  widthMm:140, heightMm:80,  wallMm:3, bendDeg:0,  bendAxis:'X', bendStart:0, bendEnd:100, connector:'none',
+  { id:3, label:'Uitgang', lengthMm:200, shape:'rect',  widthMm:140, heightMm:80,  wallMm:3, bendDeg:0,  bendAxis:'X', bendStart:0, bendEnd:100, connector:'none', visible:true,
     decoupled:false, inShape:'rect', inWidthMm:140, inHeightMm:80 },
 ];
 let nextId=4, activeIdx=0;
@@ -118,11 +124,23 @@ function getInProps(idx) {
   return { shape:prev.shape, w:prev.widthMm, h:prev.heightMm };
 }
 
+// Dwarsdoorsnede-oppervlakte (mm²) op basis van de buitenmaat, voor een
+// gegeven vorm. Gebruikt om te signaleren wanneer een segment vernauwt
+// t.o.v. de allereerste ingang-oppervlakte van de hele buis.
+function calcArea(shape, w, h) {
+  if (shape==='round') return Math.PI * (w/2) * (w/2);
+  if (shape==='square') return w * w;
+  return w * h;
+}
+function baselineArea() {
+  return calcArea(steps[0].shape, steps[0].widthMm, steps[0].heightMm);
+}
+
 function addStep() {
   const p=steps[steps.length-1];
   steps.push({ id:nextId++, label:'Segment '+(nextId-1), lengthMm:150,
     shape:p.shape, widthMm:p.widthMm, heightMm:p.heightMm,
-    wallMm:p.wallMm, bendDeg:0, bendAxis:'X', bendStart:0, bendEnd:100, connector:'none',
+    wallMm:p.wallMm, bendDeg:0, bendAxis:'X', bendStart:0, bendEnd:100, connector:'none', visible:true,
     decoupled:false, inShape:p.shape, inWidthMm:p.widthMm, inHeightMm:p.heightMm });
   activeIdx=steps.length-1;
   renderUI(); buildMesh();
@@ -137,12 +155,18 @@ function removeStep(i,e) {
 }
 
 function selectStep(i){ activeIdx=i; renderUI(); buildMesh(); }
+function toggleVisible(i,e){
+  e.stopPropagation();
+  steps[i].visible = steps[i].visible===false ? true : false;
+  renderUI(); buildMesh();
+}
 
 function renderUI() {
   enforceSlipBendConstraints();
   const list=document.getElementById('steps-list');
   list.innerHTML='';
   let total=0;
+  const baseArea = baselineArea();
   steps.forEach((s,i)=>{
     total+=s.lengthMm;
     const inp=getInProps(i);
@@ -150,10 +174,13 @@ function renderUI() {
     const dims=i===0
       ? `${sl[s.shape]} ${s.widthMm}${s.shape==='round'?'⌀':s.shape==='rect'?' × '+s.heightMm:''}mm · L:${s.lengthMm}mm`
       : `${sl[inp.shape]}→${sl[s.shape]} ${inp.w}×${inp.h}→${s.widthMm}${s.shape==='rect'?' × '+s.heightMm:''}mm · L:${s.lengthMm}mm${s.bendDeg?` · ${s.bendDeg}°`:''}`;
+    const inArea = calcArea(inp.shape, inp.w, inp.h);
+    const outArea = calcArea(s.shape, s.widthMm, s.heightMm);
+    const shrinks = inArea < baseArea*0.999 || outArea < baseArea*0.999;
     const d=document.createElement('div');
-    d.className='step-card'+(i===activeIdx?' active':'');
+    d.className='step-card'+(i===activeIdx?' active':'')+(s.visible===false?' hidden-seg':'');
     d.onclick=()=>selectStep(i);
-    d.innerHTML=`<div class="step-card-header"><span class="step-label">${i===0?'① ':i===steps.length-1?'⑥ ':'↓ '}${s.label}</span><button class="btn-remove" onclick="removeStep(${i},event)">✕</button></div><div class="step-dims">${dims}${s.connector==='magnet'?' · 🔵 magneet':s.connector==='slip'?' · ⟶ schuif':''}${s.decoupled?' · ⊘ losgekoppeld':''}</div>`;
+    d.innerHTML=`<div class="step-card-header"><span class="step-label">${i===0?'① ':i===steps.length-1?'⑥ ':'↓ '}${s.label}</span><span class="step-card-btns">${shrinks?'<span class="area-warn" title="Oppervlakte kleiner dan de ingang van segment 1">⬇︎</span>':''}<button class="btn-visible" onclick="toggleVisible(${i},event)" title="${s.visible===false?'Zichtbaar maken':'Verbergen'}">${s.visible===false?'🚫':'👁'}</button><button class="btn-remove" onclick="removeStep(${i},event)">✕</button></span></div><div class="step-dims">${dims}${s.connector==='magnet'?' · 🔵 magneet':s.connector==='slip'?' · ⟶ schuif':''}${s.decoupled?' · ⊘ losgekoppeld':''}${s.visible===false?' · verborgen':''}</div>`;
     list.appendChild(d);
   });
   document.getElementById('seg-count').textContent=steps.length+' segm.';
@@ -196,6 +223,22 @@ function renderEditor() {
   const inp=getInProps(activeIdx);
   const isFirst=activeIdx===0;
   const ed=document.getElementById('editor');
+
+  // Focus behouden over een re-render heen: elke wijziging bouwt de
+  // volledige editor-HTML opnieuw op, waardoor het actieve invoerveld
+  // een NIEUW DOM-element wordt en de focus (en cursorpositie) verliest
+  // — met name storend bij backspace. We onthouden hier WELK element
+  // (op volgorde) en de cursorpositie, en herstellen dat na de rebuild.
+  let focusInfo = null;
+  if (ed.contains(document.activeElement)) {
+    const focusables = Array.from(ed.querySelectorAll('input,select,button'));
+    const idx = focusables.indexOf(document.activeElement);
+    if (idx !== -1) {
+      focusInfo = { idx, selStart: null, selEnd: null };
+      try { focusInfo.selStart = document.activeElement.selectionStart; focusInfo.selEnd = document.activeElement.selectionEnd; } catch(e) {}
+    }
+  }
+
   const hField=s.shape==='round'||s.shape==='square'
     ? `<div class="field"><label>Hoogte (mm)</label><input type="number" value="${s.heightMm}" readonly tabindex="-1"></div>`
     : `<div class="field"><label>Hoogte (mm)</label><input type="number" min="10" max="1000" step="1" value="${s.heightMm}" oninput="updShape('heightMm',+this.value)"></div>`;
@@ -229,9 +272,20 @@ function renderEditor() {
     }
   }
 
+  const baseArea = baselineArea();
+  const inArea = calcArea(inp.shape, inp.w, inp.h);
+  const outArea = calcArea(s.shape, s.widthMm, s.heightMm);
+  const areaLine = (area, label) => {
+    const pct = (area/baseArea*100).toFixed(0);
+    const below = area < baseArea*0.999;
+    const color = below ? '#e0a040' : '#5a9a7a';
+    return `<div style="font-size:11px;color:${color};margin-bottom:6px">${below?'⬇︎ ':'✓ '}${label}: ${area.toFixed(0)} mm² (${pct}% van ingang segment 1${below?', kleiner!':''})</div>`;
+  };
+
   ed.innerHTML=`
     <h3>Segment ${activeIdx+1}: ${s.label}</h3>
     ${!isFirst?`<div class="inherited-badge">↳ Ingang: ${inp.shape==='round'?'○ Rond':inp.shape==='square'?'□ Vierkant':'▭ Rechthoek'} — ${inp.w}${inp.shape==='round'?'⌀':inp.shape==='square'?'':' × '+inp.h} mm (overgenomen van vorig segment)</div>`:''}
+    ${areaLine(inArea, 'Ingang-oppervlakte')}
     ${slipNoticeHtml}
     <div class="section-title">Uitgang vorm</div>
     <div class="shape-picker">
@@ -244,6 +298,7 @@ function renderEditor() {
       <div class="field"><label>${s.shape==='round'?'Diameter (mm)':'Breedte (mm)'}</label><input type="number" min="10" max="1000" step="1" value="${s.widthMm}" oninput="updShape('widthMm',+this.value)"></div>
       ${hField}
     </div>
+    ${areaLine(outArea, 'Uitgang-oppervlakte')}
     <div class="section-title">Segment instellingen</div>
     <div class="field-row">
       <div class="field"><label>Naam</label><input value="${s.label}" oninput="upd('label',this.value)"></div>
@@ -330,6 +385,18 @@ function renderEditor() {
       <div class="field"><label>${s.inShape==='round'?'Diameter (mm)':'Breedte (mm)'}</label><input type="number" min="10" max="1000" step="1" value="${s.inWidthMm||100}" oninput="updInShape('inWidthMm',+this.value)"></div>
       <div class="field"><label>Hoogte (mm)</label><input type="number" min="10" max="1000" step="1" value="${s.inHeightMm||100}" ${s.inShape!=='rect'?'readonly':''} oninput="updInShape('inHeightMm',+this.value)"></div>
     </div>`:''}`;
+
+  // Focus (en cursorpositie) herstellen op hetzelfde veld als vóór de rebuild.
+  if (focusInfo) {
+    const newFocusables = ed.querySelectorAll('input,select,button');
+    const el = newFocusables[focusInfo.idx];
+    if (el) {
+      el.focus();
+      if (focusInfo.selStart !== null) {
+        try { el.setSelectionRange(focusInfo.selStart, focusInfo.selEnd); } catch(e) {}
+      }
+    }
+  }
 }
 
 function setShape(shape) {
@@ -979,13 +1046,18 @@ function buildMesh() {
 
   steps.forEach((s,si)=>{
     const inp=getInProps(si);
+    const isHidden = s.visible===false;
+
+    // Geometrie wordt ALTIJD gebouwd en toegevoegd (ook als verborgen) —
+    // alleen de .visible vlag van de mesh zelf bepaalt of hij te zien is.
+    // Zo blijft de grondpositionering (die op de VOLLEDIGE geometrie
+    // gebaseerd is) stabiel, ongeacht welke segmenten je in/uit schakelt.
     const geos=[];
     geos.push(buildSegmentGeo(
       inp.shape, inp.w, inp.h,
       s.shape, s.widthMm, s.heightMm,
       s.wallMm, s.lengthMm, s.bendDeg, s.bendAxis, s.bendStart, s.bendEnd
     ));
-
 
     // Magnetische koppeling: ring aan einde van dit segment (mannelijk)
     if(s.connector==='magnet') {
@@ -1006,8 +1078,11 @@ function buildMesh() {
     mesh.position.copy(worldPos);
     mesh.quaternion.copy(worldQuat);
     mesh.userData.segIdx = si;
+    mesh.visible = !isHidden;
     meshGroup.add(mesh);
 
+    // Positie/oriëntatie ALTIJD bijwerken, ook als dit segment verborgen
+    // is — anders raken volgende segmenten hun juiste plek kwijt.
     const localEnd=new THREE.Vector3(...segEndPos(s.lengthMm, s.bendDeg, s.bendAxis, s.bendStart, s.bendEnd));
     localEnd.applyQuaternion(worldQuat);
     worldPos=worldPos.clone().add(localEnd);
@@ -1020,7 +1095,9 @@ function buildMesh() {
     // Magnet female ring: aan START van het VOLGENDE segment geplaatst,
     // maar met de VORM van het segment waar de koppeling op is aangezet
     // (s, niet ns) — zodat mannelijk en vrouwelijk altijd exact dezelfde
-    // vorm hebben, ongeacht de vorm van het volgende segment.
+    // vorm hebben, ongeacht de vorm van het volgende segment. Onzichtbaar
+    // gemaakt (niet weggelaten) als dit segment OF het volgende verborgen is.
+    const nextHidden = si<steps.length-1 && steps[si+1].visible===false;
     if(s.connector==='magnet' && si<steps.length-1) {
       const femaleGeo=makeMagnetFemaleAtStart(
         s.shape,s.widthMm,s.heightMm,s.wallMm,
@@ -1032,6 +1109,7 @@ function buildMesh() {
       fMesh.position.copy(worldPos);
       fMesh.quaternion.copy(worldQuat);
       fMesh.userData.segIdx = si+1;
+      fMesh.visible = !(isHidden || nextHidden);
       meshGroup.add(fMesh);
     }
   });
@@ -1039,10 +1117,19 @@ function buildMesh() {
   // Zet de buis echt op de grond: bereken de werkelijke onderrand van
   // de geometrie (i.p.v. een vaste gok) en verschuif de hele groep zo
   // dat dat laagste punt precies op het rastervlak (y=-200) landt —
-  // werkt voor elke vorm, diameter en bochtconfiguratie.
-  const box = new THREE.Box3().setFromObject(meshGroup);
+  // gebaseerd op de VOLLEDIGE geometrie (ook verborgen segmenten), zodat
+  // het model niet verspringt als je een segment in/uitschakelt.
+  const box = new THREE.Box3();
+  meshGroup.children.forEach(mesh=>{
+    if(!mesh.geometry) return;
+    mesh.updateMatrixWorld(true);
+    const g = mesh.geometry;
+    if(!g.boundingBox) g.computeBoundingBox();
+    const meshBox = g.boundingBox.clone().applyMatrix4(mesh.matrixWorld);
+    box.union(meshBox);
+  });
   const groundY = -200;
-  meshGroup.position.y = groundY - box.min.y;
+  meshGroup.position.y = box.isEmpty() ? 0 : (groundY - box.min.y);
   scene.add(meshGroup);
 }
 
@@ -1138,6 +1225,7 @@ function buildSTLBlobForSegments(segIdxSet) {
   meshGroup.traverse(obj=>{
     if(!obj.isMesh||!obj.geometry) return;
     if(!segIdxSet.has(obj.userData.segIdx)) return;
+    if(obj.visible===false) return; // verborgen segmenten niet meenemen in de export
     obj.updateWorldMatrix(true,false);
     const g=obj.geometry, p=g.attributes.position, n=g.attributes.normal, ia=g.index.array;
     const mat=obj.matrixWorld;
