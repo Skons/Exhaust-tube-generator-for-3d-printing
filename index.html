@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="nl">
+<html lang="nl" id="html-root">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -13,6 +13,9 @@ body { font-family: system-ui, -apple-system, sans-serif; background: #0f0f1a; c
 header { padding: 10px 18px; border-bottom: 1px solid #2a2a4a; display: flex; align-items: center; gap: 16px; background: #12122a; flex-shrink: 0; }
 header h1 { font-size: 15px; font-weight: 500; color: #c0c0e0; }
 header span { font-size: 11px; color: #555577; }
+.lang-btn { background: #1c1c38; border: 1px solid #2a2a4a; color: #7777aa; font-size: 11px; font-weight: 600; padding: 5px 9px; border-radius: 5px; cursor: pointer; transition: all 0.15s; }
+.lang-btn:hover { border-color: #3a3a6a; color: #a0a0c0; }
+.lang-btn.active { border-color: #4a7fa5; background: #1a2a38; color: #6aacda; }
 .app { display: grid; grid-template-columns: 360px 1fr; flex: 1; overflow: hidden; min-height: 0; }
 .panel { background: #141428; border-right: 1px solid #2a2a4a; display: flex; flex-direction: column; overflow: hidden; }
 .panel-header { padding: 12px 16px; border-bottom: 1px solid #2a2a4a; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
@@ -23,7 +26,11 @@ header span { font-size: 11px; color: #555577; }
 .step-card { background: #1c1c38; border: 1px solid #2a2a4a; border-radius: 6px; padding: 9px 12px; margin-bottom: 5px; cursor: pointer; transition: border-color 0.15s; }
 .step-card:hover { border-color: #3a3a6a; }
 .step-card.active { border-color: #4a7fa5; background: #1a2a38; }
-.step-card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 3px; }
+.step-card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 3px; gap: 6px; }
+.step-drag-handle { color: #444466; font-size: 13px; cursor: grab; padding: 0 2px; flex-shrink: 0; }
+.step-drag-handle:hover { color: #7777aa; }
+.step-card.dragging { opacity: 0.4; }
+.step-card.drag-over { border-color: #4a7fa5; border-style: dashed; }
 .step-label { font-size: 12px; font-weight: 500; color: #8888aa; }
 .step-card.active .step-label { color: #6aacda; }
 .step-dims { font-size: 11px; color: #555577; }
@@ -71,7 +78,11 @@ input[type=checkbox] { width: 14px; height: 14px; accent-color: #4a7fa5; cursor:
 <body>
 <header>
   <h1>Exhaust Tube STL Generator</h1>
-  <span>Sleep om te draaien · Scroll om te zoomen · Elk segment sluit aan op het vorige</span>
+  <span id="header-hint">Sleep om te draaien · Scroll om te zoomen · Rechtermuisknop+Shift om te pannen · Elk segment sluit aan op het vorige</span>
+  <div class="lang-switch" style="margin-left:auto;display:flex;gap:4px">
+    <button class="lang-btn" id="lang-nl" onclick="setLang('nl')">NL</button>
+    <button class="lang-btn" id="lang-en" onclick="setLang('en')">EN</button>
+  </div>
 </header>
 <div class="app">
   <div class="panel">
@@ -85,7 +96,7 @@ input[type=checkbox] { width: 14px; height: 14px; accent-color: #4a7fa5; cursor:
   </div>
   <div class="viewport">
     <canvas id="c"></canvas>
-    <div class="info-badge">Sleep om te draaien · Scroll om te zoomen</div>
+    <div class="info-badge">Sleep om te draaien · Scroll om te zoomen · RMB+Shift om te pannen</div>
     <div class="total-badge" id="total-badge"></div>
     <div class="toolbar">
       <button class="reset-btn" onclick="resetView()">↺ Reset view</button>
@@ -95,6 +106,94 @@ input[type=checkbox] { width: 14px; height: 14px; accent-color: #4a7fa5; cursor:
 </div>
 
 <script>
+// ─── Vertalingen / Translations ───────────────────────────────────
+let lang = 'nl';
+const translations = {
+  headerHint: { nl:'Sleep om te draaien · Scroll om te zoomen · Rechtermuisknop+Shift om te pannen · Elk segment sluit aan op het vorige', en:'Drag to rotate · Scroll to zoom · Right-click+Shift to pan · Each segment connects to the previous one' },
+  infoBadge: { nl:'Sleep om te draaien · Scroll om te zoomen · RMB+Shift om te pannen', en:'Drag to rotate · Scroll to zoom · RMB+Shift to pan' },
+  segments: { nl:'Segmenten', en:'Segments' },
+  segShort: { nl:' segm.', en:' seg.' },
+  addSegment: { nl:'+ Segment toevoegen', en:'+ Add segment' },
+  total: { nl:'Totaal: ', en:'Total: ' },
+  resetView: { nl:'↺ Reset view', en:'↺ Reset view' },
+  downloadStl: { nl:'⬇ Download STL', en:'⬇ Download STL' },
+  downloadZip: { nl:n=>`⬇ Download ZIP (${n} delen)`, en:n=>`⬇ Download ZIP (${n} parts)` },
+  makeVisible: { nl:'Zichtbaar maken', en:'Make visible' },
+  hide: { nl:'Verbergen', en:'Hide' },
+  hiddenSuffix: { nl:' · verborgen', en:' · hidden' },
+  decoupledSuffix: { nl:' · ⊘ losgekoppeld', en:' · ⊘ decoupled' },
+  magnetSuffix: { nl:' · 🔵 magneet', en:' · 🔵 magnet' },
+  slipSuffix: { nl:' · ⟶ schuif', en:' · ⟶ slip' },
+  areaWarnTitle: { nl:'Oppervlakte kleiner dan de ingang van segment 1', en:'Area smaller than the input of segment 1' },
+  segmentTitle: { nl:n=>`Segment ${n}`, en:n=>`Segment ${n}` },
+  inheritedBadge: { nl:(shapeLabel,dims)=>`↳ Ingang: ${shapeLabel} — ${dims} mm (overgenomen van vorig segment)`, en:(shapeLabel,dims)=>`↳ Input: ${shapeLabel} — ${dims} mm (inherited from previous segment)` },
+  shapeRound: { nl:'○ Rond', en:'○ Round' },
+  shapeSquare: { nl:'□ Vierkant', en:'□ Square' },
+  shapeRect: { nl:'▭ Rechthoek', en:'▭ Rectangle' },
+  round: { nl:'Rond', en:'Round' },
+  square: { nl:'Vierkant', en:'Square' },
+  rect: { nl:'Rechthoek', en:'Rectangle' },
+  inputArea: { nl:'Ingang-oppervlakte', en:'Input area' },
+  outputArea: { nl:'Uitgang-oppervlakte', en:'Output area' },
+  areaLine: { nl:(area,pct,below,label)=>`${below?'⬇︎ ':'✓ '}${label}: ${area} mm² (${pct}% van ingang segment 1${below?', kleiner!':''})`, en:(area,pct,below,label)=>`${below?'⬇︎ ':'✓ '}${label}: ${area} mm² (${pct}% of segment 1 input${below?', smaller!':''})` },
+  slipSokNotice: { nl:mm=>`Sok van vorig segment steekt ${mm}mm hierin`, en:mm=>`Sleeve from previous segment extends ${mm}mm into this one` },
+  magnetRingNotice: { nl:mm=>`Magnetische ring van vorig segment gaat ${mm}mm hierin uit van een rechte buis`, en:mm=>`Magnetic ring from previous segment assumes a straight tube for ${mm}mm into this one` },
+  bendMinSuffix: { nl:pct=>`— "Start bocht" kan niet lager dan ${pct}% (anders wijkt de buis af van de ring/sok).`, en:pct=>`— "Bend start" cannot be lower than ${pct}% (otherwise the tube diverges from the ring/sleeve).` },
+  outputShape: { nl:'Uitgang vorm', en:'Output shape' },
+  outputDims: { nl:'Uitgang afmetingen', en:'Output dimensions' },
+  diameterMm: { nl:'Diameter (mm)', en:'Diameter (mm)' },
+  widthMm: { nl:'Breedte (mm)', en:'Width (mm)' },
+  heightMm: { nl:'Hoogte (mm)', en:'Height (mm)' },
+  segmentSettings: { nl:'Segment instellingen', en:'Segment settings' },
+  name: { nl:'Naam', en:'Name' },
+  wallThickness: { nl:'Wanddikte (mm)', en:'Wall thickness (mm)' },
+  length: { nl:'Lengte (mm)', en:'Length (mm)' },
+  bendAngle: { nl:'Booghoek (°)', en:'Bend angle (°)' },
+  bendAxisTitle: { nl:'Buigas (buiging draait om deze as)', en:'Bend axis (bend rotates around this axis)' },
+  xAxis: { nl:'X-as', en:'X axis' },
+  yAxis: { nl:'Y-as', en:'Y axis' },
+  zAxis: { nl:'Z-as', en:'Z axis' },
+  bendZoneTitle: { nl:'Buigzone (% van segmentlengte)', en:'Bend zone (% of segment length)' },
+  bendStart: { nl:'Start bocht (%)', en:'Bend start (%)' },
+  bendEnd: { nl:'Einde bocht (%)', en:'Bend end (%)' },
+  straightHint: { nl:'Vóór start en na einde loopt de buis recht.', en:'Before start and after end, the tube runs straight.' },
+  couplingTitle: { nl:'Koppeling aan einde segment', en:'Coupling at end of segment' },
+  continuous: { nl:'Doorlopend', en:'Continuous' },
+  magCoupling: { nl:'Mag. koppeling', en:'Magnetic coupling' },
+  slip: { nl:'Schuif', en:'Slip' },
+  ringThickness: { nl:'Ringdikte (mm)', en:'Ring thickness (mm)' },
+  magnetDiam: { nl:'Magneet ⌀ (mm)', en:'Magnet ⌀ (mm)' },
+  magnetCount: { nl:'Aantal magneten', en:'Number of magnets' },
+  magnetThick: { nl:'Magneet dikte (mm)', en:'Magnet thickness (mm)' },
+  magnetHint: { nl:'🧲 Een platte ring om de buis met een golvende buitenrand — elke bult bevat een rond magneetgat. Het volgende segment krijgt dezelfde ring aan zijn begin, zodat de golven en magneten precies in elkaar passen. De ringdikte past zich automatisch aan als de magneet dikker is dan de ingestelde ringdikte.', en:'🧲 A flat ring around the tube with a wavy outer edge — each bump contains a round magnet hole. The next segment gets the same ring at its start, so the waves and magnets fit together precisely. The ring thickness adjusts automatically if the magnet is thicker than the set ring thickness.' },
+  sleeveLength: { nl:'Sok lengte (mm)', en:'Sleeve length (mm)' },
+  clearance: { nl:'Speling (mm)', en:'Clearance (mm)' },
+  slipHint: { nl:'↔ <b>Speling</b> = ruimte aan elke kant tussen de buitenwand van het volgende segment en de binnenwand van de sok. Bij 0.3mm past de sok er licht strak omheen — ideaal voor lijm. Groter = losser; kleiner = heel strak (kan lastig printen).', en:'↔ <b>Clearance</b> = space on each side between the outer wall of the next segment and the inner wall of the sleeve. At 0.3mm the sleeve fits snugly around it — ideal for glue. Larger = looser; smaller = very tight (can be hard to print).' },
+  decoupledTitle: { nl:'Losgekoppelde modus', en:'Decoupled mode' },
+  decoupled: { nl:'Losgekoppeld', en:'Decoupled' },
+  decoupledHint: { nl:'Zodra dit aan staat, wordt de ingang-afmeting van dit segment NIET meer overgenomen van het vorige segment, en werken wijzigingen aan dit segment niet meer door naar het volgende segment. Handig voor losstaande onderdelen die niet naadloos hoeven aan te sluiten.', en:'Once this is on, this segment\'s input dimensions are NO LONGER inherited from the previous segment, and changes to this segment no longer propagate to the next segment. Useful for standalone parts that don\'t need to connect seamlessly.' },
+  ownInputTitle: { nl:'Eigen ingang-vorm (onafhankelijk)', en:'Own input shape (independent)' },
+  dragHandle: { nl:'Sleep om te herordenen', en:'Drag to reorder' },
+};
+function t(key, ...args) {
+  const entry = translations[key];
+  if (!entry) return key;
+  const v = entry[lang];
+  return typeof v === 'function' ? v(...args) : v;
+}
+function setLang(l) {
+  lang = l;
+  document.getElementById('html-root').setAttribute('lang', l);
+  document.getElementById('header-hint').textContent = t('headerHint');
+  document.querySelectorAll('.info-badge').forEach(el=>el.textContent=t('infoBadge'));
+  document.getElementById('lang-nl').classList.toggle('active', l==='nl');
+  document.getElementById('lang-en').classList.toggle('active', l==='en');
+  document.querySelector('.panel-header h2').textContent = t('segments');
+  document.querySelector('.add-btn').textContent = t('addSegment');
+  document.querySelector('.reset-btn').textContent = t('resetView');
+  renderUI();
+}
+
 const steps = [
   { id:1, label:'Ingang',  lengthMm:150, shape:'round', widthMm:100, heightMm:100, wallMm:3, bendDeg:0,  bendAxis:'X', bendStart:0, bendEnd:100, connector:'none', visible:true,
     decoupled:false, inShape:'round', inWidthMm:100, inHeightMm:100 },
@@ -104,9 +203,12 @@ const steps = [
     decoupled:false, inShape:'rect', inWidthMm:140, inHeightMm:80 },
 ];
 let nextId=4, activeIdx=0;
+let dragSrcIdx = null;
 let scene, camera, renderer, meshGroup;
 let isDragging=false, prevMouse={x:0,y:0};
 let rotX=0.4, rotY=0.6, zoom=1;
+let panTarget = new THREE.Vector3(0,-100,0); // brandpunt waar de camera omheen draait; verschuifbaar met rechtermuisknop+Shift
+let isPanning = false;
 
 // Bepaalt de ingang-vorm/afmetingen van een segment. Normaal wordt dit
 // overgenomen van het vorige segment (aaneengesloten buizen). Zodra dit
@@ -155,6 +257,20 @@ function removeStep(i,e) {
 }
 
 function selectStep(i){ activeIdx=i; renderUI(); buildMesh(); }
+// Verplaatst segment van index 'from' naar index 'to' (drag-and-drop
+// herordenen). De actieve selectie volgt het verplaatste segment mee.
+function moveStep(from, to) {
+  if (from===to || from<0 || to<0 || from>=steps.length || to>=steps.length) return;
+  const wasActiveId = steps[activeIdx] ? steps[activeIdx].id : null;
+  const [moved] = steps.splice(from, 1);
+  steps.splice(to, 0, moved);
+  if (wasActiveId !== null) {
+    const newIdx = steps.findIndex(s=>s.id===wasActiveId);
+    if (newIdx !== -1) activeIdx = newIdx;
+  }
+  renderUI();
+  buildMesh();
+}
 function toggleVisible(i,e){
   e.stopPropagation();
   steps[i].visible = steps[i].visible===false ? true : false;
@@ -179,15 +295,32 @@ function renderUI() {
     const shrinks = inArea < baseArea*0.999 || outArea < baseArea*0.999;
     const d=document.createElement('div');
     d.className='step-card'+(i===activeIdx?' active':'')+(s.visible===false?' hidden-seg':'');
+    d.draggable=true;
+    d.dataset.idx=i;
     d.onclick=()=>selectStep(i);
-    d.innerHTML=`<div class="step-card-header"><span class="step-label">${i===0?'① ':i===steps.length-1?'⑥ ':'↓ '}${s.label}</span><span class="step-card-btns">${shrinks?'<span class="area-warn" title="Oppervlakte kleiner dan de ingang van segment 1">⬇︎</span>':''}<button class="btn-visible" onclick="toggleVisible(${i},event)" title="${s.visible===false?'Zichtbaar maken':'Verbergen'}">${s.visible===false?'🚫':'👁'}</button><button class="btn-remove" onclick="removeStep(${i},event)">✕</button></span></div><div class="step-dims">${dims}${s.connector==='magnet'?' · 🔵 magneet':s.connector==='slip'?' · ⟶ schuif':''}${s.decoupled?' · ⊘ losgekoppeld':''}${s.visible===false?' · verborgen':''}</div>`;
+    d.addEventListener('dragstart', e=>{
+      dragSrcIdx = i;
+      d.classList.add('dragging');
+      e.dataTransfer.effectAllowed='move';
+    });
+    d.addEventListener('dragend', ()=>{ d.classList.remove('dragging'); });
+    d.addEventListener('dragover', e=>{ e.preventDefault(); e.dataTransfer.dropEffect='move'; d.classList.add('drag-over'); });
+    d.addEventListener('dragleave', ()=>{ d.classList.remove('drag-over'); });
+    d.addEventListener('drop', e=>{
+      e.preventDefault();
+      d.classList.remove('drag-over');
+      if (dragSrcIdx===null || dragSrcIdx===i) return;
+      moveStep(dragSrcIdx, i);
+      dragSrcIdx=null;
+    });
+    d.innerHTML=`<div class="step-card-header"><span class="step-drag-handle" title="${t('dragHandle')}">⠿</span><span class="step-label">${i===0?'① ':i===steps.length-1?'⑥ ':'↓ '}${s.label}</span><span class="step-card-btns">${shrinks?`<span class="area-warn" title="${t('areaWarnTitle')}">⬇︎</span>`:''}<button class="btn-visible" onclick="toggleVisible(${i},event)" title="${s.visible===false?t('makeVisible'):t('hide')}">${s.visible===false?'🚫':'👁'}</button><button class="btn-remove" onclick="removeStep(${i},event)">✕</button></span></div><div class="step-dims">${dims}${s.connector==='magnet'?t('magnetSuffix'):s.connector==='slip'?t('slipSuffix'):''}${s.decoupled?t('decoupledSuffix'):''}${s.visible===false?t('hiddenSuffix'):''}</div>`;
     list.appendChild(d);
   });
-  document.getElementById('seg-count').textContent=steps.length+' segm.';
-  document.getElementById('total-badge').textContent='Totaal: '+total+' mm';
+  document.getElementById('seg-count').textContent=steps.length+t('segShort');
+  document.getElementById('total-badge').textContent=t('total')+total+' mm';
   const nParts = computePartGroups().length;
   const dlBtn = document.getElementById('download-btn');
-  if (dlBtn) dlBtn.textContent = nParts>1 ? `⬇ Download ZIP (${nParts} delen)` : '⬇ Download STL';
+  if (dlBtn) dlBtn.textContent = nParts>1 ? t('downloadZip', nParts) : t('downloadStl');
   renderEditor();
 }
 
@@ -240,8 +373,8 @@ function renderEditor() {
   }
 
   const hField=s.shape==='round'||s.shape==='square'
-    ? `<div class="field"><label>Hoogte (mm)</label><input type="number" value="${s.heightMm}" readonly tabindex="-1"></div>`
-    : `<div class="field"><label>Hoogte (mm)</label><input type="number" min="10" max="1000" step="1" value="${s.heightMm}" oninput="updShape('heightMm',+this.value)"></div>`;
+    ? `<div class="field"><label>${t('heightMm')}</label><input type="number" value="${s.heightMm}" readonly tabindex="-1"></div>`
+    : `<div class="field"><label>${t('heightMm')}</label><input type="number" min="10" max="1000" step="1" value="${s.heightMm}" oninput="updShape('heightMm',+this.value)"></div>`;
 
   const axisBtn = (ax,label) =>
     `<button class="shape-btn${s.bendAxis===ax?' active':''}" onclick="upd('bendAxis','${ax}')">${label}</button>`;
@@ -257,10 +390,10 @@ function renderEditor() {
     let requiredMm = 0, reason = '';
     if (prev.connector === 'slip') {
       requiredMm = prev.connectorLen || 20;
-      reason = `Sok van vorig segment steekt ${requiredMm}mm hierin`;
+      reason = t('slipSokNotice', requiredMm);
     } else if (prev.connector === 'magnet') {
       requiredMm = Math.max(prev.connectorLen||10, prev.connectorDepth||3);
-      reason = `Magnetische ring van vorig segment gaat ${requiredMm}mm hierin uit van een rechte buis`;
+      reason = t('magnetRingNotice', requiredMm);
     }
     if (requiredMm > 0) {
       minBendStartPct = Math.min(99, Math.ceil((requiredMm / s.lengthMm) * 100));
@@ -268,7 +401,7 @@ function renderEditor() {
         s.bendStart = minBendStartPct;
         if (s.bendEnd <= s.bendStart) s.bendEnd = Math.min(100, s.bendStart+1);
       }
-      slipNoticeHtml = `<div class="inherited-badge" style="background:#2a2010;border-color:#4a3a1a;color:#c0a05a">⟶ ${reason} — "Start bocht" kan niet lager dan ${minBendStartPct}% (anders wijkt de buis af van de ring/sok).</div>`;
+      slipNoticeHtml = `<div class="inherited-badge" style="background:#2a2010;border-color:#4a3a1a;color:#c0a05a">⟶ ${reason} ${t('bendMinSuffix', minBendStartPct)}</div>`;
     }
   }
 
@@ -279,50 +412,52 @@ function renderEditor() {
     const pct = (area/baseArea*100).toFixed(0);
     const below = area < baseArea*0.999;
     const color = below ? '#e0a040' : '#5a9a7a';
-    return `<div style="font-size:11px;color:${color};margin-bottom:6px">${below?'⬇︎ ':'✓ '}${label}: ${area.toFixed(0)} mm² (${pct}% van ingang segment 1${below?', kleiner!':''})</div>`;
+    return `<div style="font-size:11px;color:${color};margin-bottom:6px">${t('areaLine', area.toFixed(0), pct, below, label)}</div>`;
   };
 
+  const shapeLabelFor = sh => sh==='round'?t('shapeRound'):sh==='square'?t('shapeSquare'):t('shapeRect');
+
   ed.innerHTML=`
-    <h3>Segment ${activeIdx+1}: ${s.label}</h3>
-    ${!isFirst?`<div class="inherited-badge">↳ Ingang: ${inp.shape==='round'?'○ Rond':inp.shape==='square'?'□ Vierkant':'▭ Rechthoek'} — ${inp.w}${inp.shape==='round'?'⌀':inp.shape==='square'?'':' × '+inp.h} mm (overgenomen van vorig segment)</div>`:''}
-    ${areaLine(inArea, 'Ingang-oppervlakte')}
+    <h3>${t('segmentTitle', activeIdx+1)}: ${s.label}</h3>
+    ${!isFirst?`<div class="inherited-badge">${t('inheritedBadge', shapeLabelFor(inp.shape), inp.w+(inp.shape==='round'?'⌀':inp.shape==='square'?'':' × '+inp.h))}</div>`:''}
+    ${areaLine(inArea, t('inputArea'))}
     ${slipNoticeHtml}
-    <div class="section-title">Uitgang vorm</div>
+    <div class="section-title">${t('outputShape')}</div>
     <div class="shape-picker">
-      <button class="shape-btn${s.shape==='round'?' active':''}" onclick="setShape('round')">${shapeIcon('round')}Rond</button>
-      <button class="shape-btn${s.shape==='square'?' active':''}" onclick="setShape('square')">${shapeIcon('square')}Vierkant</button>
-      <button class="shape-btn${s.shape==='rect'?' active':''}" onclick="setShape('rect')">${shapeIcon('rect')}Rechthoek</button>
+      <button class="shape-btn${s.shape==='round'?' active':''}" onclick="setShape('round')">${shapeIcon('round')}${t('round')}</button>
+      <button class="shape-btn${s.shape==='square'?' active':''}" onclick="setShape('square')">${shapeIcon('square')}${t('square')}</button>
+      <button class="shape-btn${s.shape==='rect'?' active':''}" onclick="setShape('rect')">${shapeIcon('rect')}${t('rect')}</button>
     </div>
-    <div class="section-title">Uitgang afmetingen</div>
+    <div class="section-title">${t('outputDims')}</div>
     <div class="field-row">
-      <div class="field"><label>${s.shape==='round'?'Diameter (mm)':'Breedte (mm)'}</label><input type="number" min="10" max="1000" step="1" value="${s.widthMm}" oninput="updShape('widthMm',+this.value)"></div>
+      <div class="field"><label>${s.shape==='round'?t('diameterMm'):t('widthMm')}</label><input type="number" min="10" max="1000" step="1" value="${s.widthMm}" oninput="updShape('widthMm',+this.value)"></div>
       ${hField}
     </div>
-    ${areaLine(outArea, 'Uitgang-oppervlakte')}
-    <div class="section-title">Segment instellingen</div>
+    ${areaLine(outArea, t('outputArea'))}
+    <div class="section-title">${t('segmentSettings')}</div>
     <div class="field-row">
-      <div class="field"><label>Naam</label><input value="${s.label}" oninput="upd('label',this.value)"></div>
-      <div class="field"><label>Wanddikte (mm)</label><input type="number" min="0.5" max="20" step="0.5" value="${s.wallMm}" oninput="upd('wallMm',+this.value)"></div>
+      <div class="field"><label>${t('name')}</label><input value="${s.label}" oninput="upd('label',this.value)"></div>
+      <div class="field"><label>${t('wallThickness')}</label><input type="number" min="0.5" max="20" step="0.5" value="${s.wallMm}" oninput="upd('wallMm',+this.value)"></div>
     </div>
     <div class="field-row">
-      <div class="field"><label>Lengte (mm)</label><input type="number" min="5" max="5000" step="5" value="${s.lengthMm}" oninput="upd('lengthMm',+this.value)"></div>
-      <div class="field"><label>Booghoek (°)</label><input type="number" min="-360" max="360" step="1" value="${s.bendDeg}" oninput="upd('bendDeg',+this.value)"></div>
+      <div class="field"><label>${t('length')}</label><input type="number" min="5" max="5000" step="5" value="${s.lengthMm}" oninput="upd('lengthMm',+this.value)"></div>
+      <div class="field"><label>${t('bendAngle')}</label><input type="number" min="-360" max="360" step="1" value="${s.bendDeg}" oninput="upd('bendDeg',+this.value)"></div>
     </div>
-    <div class="section-title">Buigas (buiging draait om deze as)</div>
+    <div class="section-title">${t('bendAxisTitle')}</div>
     <div class="shape-picker" style="grid-template-columns:1fr 1fr 1fr">
-      ${axisBtn('X','X-as')}${axisBtn('Y','Y-as')}${axisBtn('Z','Z-as')}
+      ${axisBtn('X',t('xAxis'))}${axisBtn('Y',t('yAxis'))}${axisBtn('Z',t('zAxis'))}
     </div>
-    <div class="section-title">Buigzone (% van segmentlengte)</div>
+    <div class="section-title">${t('bendZoneTitle')}</div>
     <div class="field-row">
-      <div class="field"><label>Start bocht (%)</label><input type="number" min="${minBendStartPct}" max="99" step="1" value="${s.bendStart}" oninput="updClamp('bendStart',+this.value,${minBendStartPct},${s.bendEnd-1})"></div>
-      <div class="field"><label>Einde bocht (%)</label><input type="number" min="1" max="100" step="1" value="${s.bendEnd}" oninput="updClamp('bendEnd',+this.value,${s.bendStart+1},100)"></div>
+      <div class="field"><label>${t('bendStart')}</label><input type="number" min="${minBendStartPct}" max="99" step="1" value="${s.bendStart}" oninput="updClamp('bendStart',+this.value,${minBendStartPct},${s.bendEnd-1})"></div>
+      <div class="field"><label>${t('bendEnd')}</label><input type="number" min="1" max="100" step="1" value="${s.bendEnd}" oninput="updClamp('bendEnd',+this.value,${s.bendStart+1},100)"></div>
     </div>
-    <div style="font-size:11px;color:#555577;margin-bottom:8px">Vóór start en na einde loopt de buis recht.</div>
-    <div class="section-title">Koppeling aan einde segment</div>
+    <div style="font-size:11px;color:#555577;margin-bottom:8px">${t('straightHint')}</div>
+    <div class="section-title">${t('couplingTitle')}</div>
     <div class="shape-picker" style="grid-template-columns:1fr 1fr 1fr">
       <button class="shape-btn${s.connector==='none'?' active':''}" onclick="upd('connector','none')">
         <svg width="32" height="22" viewBox="0 0 32 22"><line x1="0" y1="7" x2="32" y2="7" stroke="currentColor" stroke-width="1.5"/><line x1="0" y1="15" x2="32" y2="15" stroke="currentColor" stroke-width="1.5"/></svg>
-        Doorlopend
+        ${t('continuous')}
       </button>
       <button class="shape-btn${s.connector==='magnet'?' active':''}" onclick="upd('connector','magnet')">
         <svg width="32" height="22" viewBox="0 0 32 22">
@@ -335,7 +470,7 @@ function renderEditor() {
           <line x1="23" y1="8" x2="32" y2="8" stroke="currentColor" stroke-width="1.5"/>
           <line x1="23" y1="14" x2="32" y2="14" stroke="currentColor" stroke-width="1.5"/>
         </svg>
-        Mag. koppeling
+        ${t('magCoupling')}
       </button>
       <button class="shape-btn${s.connector==='slip'?' active':''}" onclick="upd('connector','slip')">
         <svg width="32" height="22" viewBox="0 0 32 22">
@@ -346,44 +481,44 @@ function renderEditor() {
           <line x1="14" y1="6" x2="14" y2="8" stroke="currentColor" stroke-width="1.5"/>
           <line x1="14" y1="14" x2="14" y2="16" stroke="currentColor" stroke-width="1.5"/>
         </svg>
-        Schuif
+        ${t('slip')}
       </button>
     </div>
     ${s.connector==='magnet'?`
     <div class="field-row" style="margin-top:6px">
-      <div class="field"><label>Ringdikte (mm)</label><input type="number" min="2" max="20" step="0.5" value="${s.connectorLen||8}" oninput="upd('connectorLen',+this.value)"></div>
-      <div class="field"><label>Magneet ⌀ (mm)</label><input type="number" min="1" max="20" step="0.1" value="${s.magnetD||5}" oninput="upd('magnetD',+this.value)"></div>
+      <div class="field"><label>${t('ringThickness')}</label><input type="number" min="2" max="20" step="0.5" value="${s.connectorLen||8}" oninput="upd('connectorLen',+this.value)"></div>
+      <div class="field"><label>${t('magnetDiam')}</label><input type="number" min="1" max="20" step="0.1" value="${s.magnetD||5}" oninput="upd('magnetD',+this.value)"></div>
     </div>
     <div class="field-row">
-      <div class="field"><label>Aantal magneten</label><input type="number" min="2" max="24" step="1" value="${s.magnetCount||6}" oninput="upd('magnetCount',+this.value)"></div>
-      <div class="field"><label>Magneet dikte (mm)</label><input type="number" min="1" max="15" step="0.1" value="${s.connectorDepth||3}" oninput="upd('connectorDepth',+this.value)"></div>
+      <div class="field"><label>${t('magnetCount')}</label><input type="number" min="2" max="24" step="1" value="${s.magnetCount||6}" oninput="upd('magnetCount',+this.value)"></div>
+      <div class="field"><label>${t('magnetThick')}</label><input type="number" min="1" max="15" step="0.1" value="${s.connectorDepth||3}" oninput="upd('connectorDepth',+this.value)"></div>
     </div>
     <div style="font-size:11px;color:#5a7a9a;margin-bottom:8px;line-height:1.6;background:#1a2030;border-radius:5px;padding:7px 10px;border:1px solid #2a3a5a">
-      🧲 Een platte ring om de buis met een golvende buitenrand — elke bult bevat een rond magneetgat. Het volgende segment krijgt dezelfde ring aan zijn begin, zodat de golven en magneten precies in elkaar passen. De ringdikte past zich automatisch aan als de magneet dikker is dan de ingestelde ringdikte.
+      ${t('magnetHint')}
     </div>`:''}
     ${s.connector==='slip'?`
     <div class="field-row" style="margin-top:6px">
-      <div class="field"><label>Sok lengte (mm)</label><input type="number" min="5" max="60" step="1" value="${s.connectorLen||20}" oninput="upd('connectorLen',+this.value)"></div>
-      <div class="field"><label>Speling (mm)</label><input type="number" min="0.1" max="2" step="0.05" value="${s.connectorDepth||0.3}" oninput="updClamp('connectorDepth',+this.value,0.1,2)"></div>
+      <div class="field"><label>${t('sleeveLength')}</label><input type="number" min="5" max="60" step="1" value="${s.connectorLen||20}" oninput="upd('connectorLen',+this.value)"></div>
+      <div class="field"><label>${t('clearance')}</label><input type="number" min="0.1" max="2" step="0.05" value="${s.connectorDepth||0.3}" oninput="updClamp('connectorDepth',+this.value,0.1,2)"></div>
     </div>
     <div style="font-size:11px;color:#5a7a9a;margin-bottom:8px;line-height:1.6;background:#1a2030;border-radius:5px;padding:7px 10px;border:1px solid #2a3a5a">
-      ↔ <b>Speling</b> = ruimte aan elke kant tussen de buitenwand van het volgende segment en de binnenwand van de sok. Bij 0.3mm past de sok er licht strak omheen — ideaal voor lijm. Groter = losser; kleiner = heel strak (kan lastig printen).
+      ${t('slipHint')}
     </div>`:''}
-    <div class="section-title">Losgekoppelde modus</div>
-    <div class="toggle-row"><input type="checkbox" id="decoup" ${s.decoupled?'checked':''} onchange="upd('decoupled',this.checked)"><label for="decoup">Losgekoppeld</label></div>
+    <div class="section-title">${t('decoupledTitle')}</div>
+    <div class="toggle-row"><input type="checkbox" id="decoup" ${s.decoupled?'checked':''} onchange="upd('decoupled',this.checked)"><label for="decoup">${t('decoupled')}</label></div>
     <div style="font-size:11px;color:#555577;margin-bottom:8px;line-height:1.5">
-      Zodra dit aan staat, wordt de ingang-afmeting van dit segment NIET meer overgenomen van het vorige segment, en werken wijzigingen aan dit segment niet meer door naar het volgende segment. Handig voor losstaande onderdelen die niet naadloos hoeven aan te sluiten.
+      ${t('decoupledHint')}
     </div>
     ${(s.decoupled || (activeIdx>0 && steps[activeIdx-1].decoupled)) ? `
-    <div class="section-title">Eigen ingang-vorm (onafhankelijk)</div>
+    <div class="section-title">${t('ownInputTitle')}</div>
     <div class="shape-picker">
-      <button class="shape-btn${s.inShape==='round'?' active':''}" onclick="setInShape('round')">${shapeIcon('round')}Rond</button>
-      <button class="shape-btn${s.inShape==='square'?' active':''}" onclick="setInShape('square')">${shapeIcon('square')}Vierkant</button>
-      <button class="shape-btn${s.inShape==='rect'?' active':''}" onclick="setInShape('rect')">${shapeIcon('rect')}Rechthoek</button>
+      <button class="shape-btn${s.inShape==='round'?' active':''}" onclick="setInShape('round')">${shapeIcon('round')}${t('round')}</button>
+      <button class="shape-btn${s.inShape==='square'?' active':''}" onclick="setInShape('square')">${shapeIcon('square')}${t('square')}</button>
+      <button class="shape-btn${s.inShape==='rect'?' active':''}" onclick="setInShape('rect')">${shapeIcon('rect')}${t('rect')}</button>
     </div>
     <div class="field-row">
-      <div class="field"><label>${s.inShape==='round'?'Diameter (mm)':'Breedte (mm)'}</label><input type="number" min="10" max="1000" step="1" value="${s.inWidthMm||100}" oninput="updInShape('inWidthMm',+this.value)"></div>
-      <div class="field"><label>Hoogte (mm)</label><input type="number" min="10" max="1000" step="1" value="${s.inHeightMm||100}" ${s.inShape!=='rect'?'readonly':''} oninput="updInShape('inHeightMm',+this.value)"></div>
+      <div class="field"><label>${s.inShape==='round'?t('diameterMm'):t('widthMm')}</label><input type="number" min="10" max="1000" step="1" value="${s.inWidthMm||100}" oninput="updInShape('inWidthMm',+this.value)"></div>
+      <div class="field"><label>${t('heightMm')}</label><input type="number" min="10" max="1000" step="1" value="${s.inHeightMm||100}" ${s.inShape!=='rect'?'readonly':''} oninput="updInShape('inHeightMm',+this.value)"></div>
     </div>`:''}`;
 
   // Focus (en cursorpositie) herstellen op hetzelfde veld als vóór de rebuild.
@@ -1182,9 +1317,34 @@ function initThree() {
   scene.add(makeAxisLabel('Z', 0, -200, axisLen+30, '#5ad08a'));
 
   const cv=document.getElementById('c');
-  cv.addEventListener('mousedown',e=>{isDragging=true;prevMouse={x:e.clientX,y:e.clientY};});
-  window.addEventListener('mousemove',e=>{if(!isDragging)return;rotY+=(e.clientX-prevMouse.x)*0.008;rotX+=(e.clientY-prevMouse.y)*0.008;prevMouse={x:e.clientX,y:e.clientY};updateCamera();});
-  window.addEventListener('mouseup',()=>isDragging=false);
+  cv.addEventListener('contextmenu', e=>e.preventDefault()); // rechtermuisknop niet laten openen als contextmenu
+  cv.addEventListener('mousedown',e=>{
+    if (e.button===2 && e.shiftKey) {
+      isPanning = true;
+    } else if (e.button===0) {
+      isDragging = true;
+    }
+    prevMouse={x:e.clientX,y:e.clientY};
+  });
+  window.addEventListener('mousemove',e=>{
+    if (isPanning) {
+      // Brandpunt verschuiven in het vlak van het scherm (camera-relatieve
+      // rechts/omhoog-richting), zodat pannen intuïtief aanvoelt ongeacht
+      // de huidige rotatie/zoom.
+      const dx = e.clientX-prevMouse.x, dy = e.clientY-prevMouse.y;
+      const panSpeed = 0.6 * zoom;
+      const camRight = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0);
+      const camUp    = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 1);
+      panTarget.addScaledVector(camRight, -dx*panSpeed);
+      panTarget.addScaledVector(camUp, dy*panSpeed);
+      prevMouse={x:e.clientX,y:e.clientY};
+      updateCamera();
+      return;
+    }
+    if(!isDragging)return;
+    rotY+=(e.clientX-prevMouse.x)*0.008;rotX+=(e.clientY-prevMouse.y)*0.008;prevMouse={x:e.clientX,y:e.clientY};updateCamera();
+  });
+  window.addEventListener('mouseup',()=>{isDragging=false;isPanning=false;});
   cv.addEventListener('wheel',e=>{e.preventDefault();zoom=Math.max(0.1,Math.min(10,zoom+e.deltaY*0.001));updateCamera();},{passive:false});
   window.addEventListener('resize',resize);
   (function animate(){requestAnimationFrame(animate);renderer.render(scene,camera);})();
@@ -1198,10 +1358,14 @@ function resize(){
 }
 function updateCamera(){
   const r=800*zoom;
-  camera.position.set(Math.sin(rotY)*Math.cos(rotX)*r,Math.sin(rotX)*r,Math.cos(rotY)*Math.cos(rotX)*r);
-  camera.lookAt(0,0,0);
+  camera.position.set(
+    panTarget.x + Math.sin(rotY)*Math.cos(rotX)*r,
+    panTarget.y + Math.sin(rotX)*r,
+    panTarget.z + Math.cos(rotY)*Math.cos(rotX)*r
+  );
+  camera.lookAt(panTarget);
 }
-function resetView(){rotX=0.4;rotY=0.6;zoom=1;updateCamera();}
+function resetView(){rotX=0.4;rotY=0.6;zoom=1;panTarget.set(0,-100,0);updateCamera();}
 
 // ─── STL export ─────────────────────────────────────────────────
 // Bepaalt hoe de segmenten opgeknipt worden in losse printbare delen:
@@ -1283,7 +1447,7 @@ async function downloadSTL() {
   URL.revokeObjectURL(url);
 }
 
-window.addEventListener('load',()=>{initThree();updateCamera();renderUI();buildMesh();});
+window.addEventListener('load',()=>{document.getElementById('lang-nl').classList.add('active');initThree();updateCamera();renderUI();buildMesh();});
 </script>
 </body>
 </html>
