@@ -9,8 +9,12 @@ Open [Exhaust Tube STL Generator](http://skons.github.io/Exhaust-tube-generator-
 ## Interface overview
 
 - **Left panel** — list of segments (tube sections) and the settings for the currently selected segment.
-- **Right panel (3D view)** — live preview of the tube. Drag to rotate, scroll to zoom. Hold shift+right mouse to move the focal point.
-- **Scroll wheel on number fields** — move the mouse over a number field and scroll to adjust the value step by step, without needing to click first.
+  - **Scroll wheel on number fields** - move the mouse over a number field and scroll to adjust the value step by step, without needing to click first.
+  - Drag and drop segments to move the order
+- **Right panel (3D view)** — live preview of the tube.
+  - Drag to rotate.
+  - Scroll to zoom.
+  - Hold shift+right mouse to move the focal point.
 
 ## Managing segments
 
