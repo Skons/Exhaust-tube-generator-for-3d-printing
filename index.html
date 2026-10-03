@@ -20,6 +20,11 @@ header span { font-size: 11px; color: #555577; }
 .panel { background: #141428; border-right: 1px solid #2a2a4a; display: flex; flex-direction: column; overflow: hidden; }
 .panel-header { padding: 12px 16px; border-bottom: 1px solid #2a2a4a; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
 .panel-header h2 { font-size: 13px; font-weight: 500; color: #a0a0c0; }
+.settings-actions { display: flex; gap: 6px; padding: 8px; border-bottom: 1px solid #2a2a4a; flex-shrink: 0; }
+.settings-actions button { display: flex; align-items: center; justify-content: center; gap: 6px; flex: 1; min-width: 0; padding: 7px 8px; border: 1px solid #2a2a4a; border-radius: 5px; background: #1c1c38; color: #a0a0c0; cursor: pointer; font-size: 11px; }
+.settings-actions button:hover { border-color: #4a7fa5; color: #d0d0f0; }
+.settings-actions svg { width: 14px; height: 14px; flex: 0 0 auto; }
+.settings-file-input { display: none; }
 .steps-list { overflow-y: auto; padding: 8px; flex-shrink: 0; max-height: 220px; }
 .steps-list::-webkit-scrollbar { width: 4px; }
 .steps-list::-webkit-scrollbar-thumb { background: #2a2a4a; border-radius: 2px; }
@@ -90,6 +95,17 @@ input[type=checkbox] { width: 14px; height: 14px; accent-color: #4a7fa5; cursor:
       <h2>Segmenten</h2>
       <span style="font-size:11px;color:#444466" id="seg-count"></span>
     </div>
+    <div class="settings-actions">
+      <button type="button" id="export-settings-btn" onclick="exportSettings()" title="Instellingen exporteren">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M8 10V1m0 0L4.5 4.5M8 1l3.5 3.5M2 9.5v4h12v-4"/></svg>
+        <span>Export</span>
+      </button>
+      <button type="button" id="import-settings-btn" onclick="document.getElementById('settings-file-input').click()" title="Instellingen importeren">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M8 1v9m0 0 3.5-3.5M8 10 4.5 6.5M2 9.5v4h12v-4"/></svg>
+        <span>Import</span>
+      </button>
+      <input class="settings-file-input" id="settings-file-input" type="file" accept=".json,application/json" onchange="importSettingsFile(this)">
+    </div>
     <div class="steps-list" id="steps-list"></div>
     <button class="add-btn" onclick="addStep()">+ Segment toevoegen</button>
     <div class="editor" id="editor"></div>
@@ -118,11 +134,17 @@ const translations = {
   resetView: { nl:'↺ Reset view', en:'↺ Reset view' },
   downloadStl: { nl:'⬇ Download STL', en:'⬇ Download STL' },
   downloadZip: { nl:n=>`⬇ Download ZIP (${n} delen)`, en:n=>`⬇ Download ZIP (${n} parts)` },
+  exportSettings: { nl:'Instellingen exporteren', en:'Export settings' },
+  importSettings: { nl:'Instellingen importeren', en:'Import settings' },
+  exportSettingsFile: { nl:'Exhaust-tube-instellingen', en:'Exhaust-tube-settings' },
+  invalidSettingsFile: { nl:'Dit bestand bevat geen geldige instellingen voor deze tool.', en:'This file does not contain valid settings for this tool.' },
+  confirmImportSettings: { nl:'De huidige segmenten worden vervangen door de geïmporteerde instellingen. Doorgaan?', en:'The current segments will be replaced by the imported settings. Continue?' },
   makeVisible: { nl:'Zichtbaar maken', en:'Make visible' },
   hide: { nl:'Verbergen', en:'Hide' },
   hiddenSuffix: { nl:' · verborgen', en:' · hidden' },
   decoupledSuffix: { nl:' · ⊘ losgekoppeld', en:' · ⊘ decoupled' },
   magnetSuffix: { nl:' · 🔵 magneet', en:' · 🔵 magnet' },
+  startScrewSuffix: { nl:' · 🔩 startschroef', en:' · 🔩 start screw' },
   slipSuffix: { nl:' · ⟶ schuif', en:' · ⟶ slip' },
   areaWarnTitle: { nl:'Oppervlakte kleiner dan de ingang van segment 1', en:'Area smaller than the input of segment 1' },
   segmentTitle: { nl:n=>`Segment ${n}`, en:n=>`Segment ${n}` },
@@ -138,6 +160,7 @@ const translations = {
   areaLine: { nl:(area,pct,below,label)=>`${below?'⬇︎ ':'✓ '}${label}: ${area} mm² (${pct}% van ingang segment 1${below?', kleiner!':''})`, en:(area,pct,below,label)=>`${below?'⬇︎ ':'✓ '}${label}: ${area} mm² (${pct}% of segment 1 input${below?', smaller!':''})` },
   slipSokNotice: { nl:mm=>`Sok van vorig segment steekt ${mm}mm hierin`, en:mm=>`Sleeve from previous segment extends ${mm}mm into this one` },
   magnetRingNotice: { nl:mm=>`Magnetische ring van vorig segment gaat ${mm}mm hierin uit van een rechte buis`, en:mm=>`Magnetic ring from previous segment assumes a straight tube for ${mm}mm into this one` },
+  startScrewStraight: { nl:mm=>`Schroefring eindigt op ${mm}mm; de buis blijft daar recht`, en:mm=>`Screw flange ends at ${mm}mm; the tube stays straight through that section` },
   bendMinSuffix: { nl:pct=>`— "Start bocht" kan niet lager dan ${pct}% (anders wijkt de buis af van de ring/sok).`, en:pct=>`— "Bend start" cannot be lower than ${pct}% (otherwise the tube diverges from the ring/sleeve).` },
   outputShape: { nl:'Uitgang vorm', en:'Output shape' },
   outputDims: { nl:'Uitgang afmetingen', en:'Output dimensions' },
@@ -158,6 +181,13 @@ const translations = {
   bendEnd: { nl:'Einde bocht (%)', en:'Bend end (%)' },
   straightHint: { nl:'Vóór start en na einde loopt de buis recht.', en:'Before start and after end, the tube runs straight.' },
   couplingTitle: { nl:'Koppeling aan einde segment', en:'Coupling at end of segment' },
+  startCouplingTitle: { nl:'Koppeling aan begin segment', en:'Coupling at start of segment' },
+  startScrew: { nl:'Schroefring', en:'Screw flange' },
+  startDistance: { nl:'Afstand vanaf begin (mm)', en:'Distance from start (mm)' },
+  screwExtraDiameter: { nl:'Extra ringdiameter (mm)', en:'Extra flange diameter (mm)' },
+  screwHoleEdgeDistance: { nl:'Hartafstand gat tot buitenrand (mm)', en:'Hole-center distance to outer edge (mm)' },
+  screwRoundRing: { nl:'Schroefring perfect rond', en:'Perfectly round screw flange' },
+  screwRoundHint: { nl:'Uit: de buitenrand volgt de schroefgaten. Aan: een volledig ronde buitenrand.', en:'Off: the outer edge follows the screw holes. On: a perfectly round outer edge.' },
   continuous: { nl:'Doorlopend', en:'Continuous' },
   magCoupling: { nl:'Mag. koppeling', en:'Magnetic coupling' },
   slip: { nl:'Schuif', en:'Slip' },
@@ -166,6 +196,9 @@ const translations = {
   magnetCount: { nl:'Aantal magneten', en:'Number of magnets' },
   magnetThick: { nl:'Magneet dikte (mm)', en:'Magnet thickness (mm)' },
   magnetHint: { nl:'🧲 Een platte ring om de buis met een golvende buitenrand — elke bult bevat een rond magneetgat. Het volgende segment krijgt dezelfde ring aan zijn begin, zodat de golven en magneten precies in elkaar passen. De ringdikte past zich automatisch aan als de magneet dikker is dan de ingestelde ringdikte.', en:'🧲 A flat ring around the tube with a wavy outer edge — each bump contains a round magnet hole. The next segment gets the same ring at its start, so the waves and magnets fit together precisely. The ring thickness adjusts automatically if the magnet is thicker than the set ring thickness.' },
+  screwDiameter: { nl:'Schroefgat ⌀ (mm)', en:'Screw hole ⌀ (mm)' },
+  screwCount: { nl:'Aantal schroefgaten', en:'Number of screw holes' },
+  screwHint: { nl:'🔩 Extra ringdiameter is de totale vergroting (+10 mm = 5 mm extra per zijde). De gatpositie is gemeten van het hart van het gat tot de buitenrand en past zich aan de beschikbare ringbreedte aan.', en:'🔩 Extra flange diameter is the total increase (+10 mm = 5 mm per side). Hole position is measured from its center to the outer edge and is limited to the available flange width.' },
   sleeveLength: { nl:'Sok lengte (mm)', en:'Sleeve length (mm)' },
   clearance: { nl:'Speling (mm)', en:'Clearance (mm)' },
   slipHint: { nl:'↔ <b>Speling</b> = ruimte aan elke kant tussen de buitenwand van het volgende segment en de binnenwand van de sok. Bij 0.3mm past de sok er licht strak omheen — ideaal voor lijm. Groter = losser; kleiner = heel strak (kan lastig printen).', en:'↔ <b>Clearance</b> = space on each side between the outer wall of the next segment and the inner wall of the sleeve. At 0.3mm the sleeve fits snugly around it — ideal for glue. Larger = looser; smaller = very tight (can be hard to print).' },
@@ -191,15 +224,19 @@ function setLang(l) {
   document.querySelector('.panel-header h2').textContent = t('segments');
   document.querySelector('.add-btn').textContent = t('addSegment');
   document.querySelector('.reset-btn').textContent = t('resetView');
+  document.querySelector('#export-settings-btn span').textContent = t('exportSettings');
+  document.querySelector('#export-settings-btn').title = t('exportSettings');
+  document.querySelector('#import-settings-btn span').textContent = t('importSettings');
+  document.querySelector('#import-settings-btn').title = t('importSettings');
   renderUI();
 }
 
 const steps = [
-  { id:1, label:'Ingang',  lengthMm:150, shape:'round', widthMm:100, heightMm:100, wallMm:3, bendDeg:0,  bendAxis:'X', bendStart:0, bendEnd:100, connector:'none', visible:true,
+  { id:1, label:'Ingang',  lengthMm:150, shape:'round', widthMm:100, heightMm:100, wallMm:3, bendDeg:0,  bendAxis:'X', bendStart:0, bendEnd:100, connector:'none', startConnector:'none', startScrewOffsetMm:15, startScrewLen:8, startScrewD:5, startScrewCount:6, startScrewExtraDiameterMm:0, startScrewEdgeMm:null, startScrewRound:false, visible:true,
     decoupled:false, inShape:'round', inWidthMm:100, inHeightMm:100 },
-  { id:2, label:'Bocht',   lengthMm:100, shape:'round', widthMm:100, heightMm:100, wallMm:3, bendDeg:45, bendAxis:'X', bendStart:0, bendEnd:100, connector:'none', visible:true,
+  { id:2, label:'Bocht',   lengthMm:100, shape:'round', widthMm:100, heightMm:100, wallMm:3, bendDeg:45, bendAxis:'X', bendStart:0, bendEnd:100, connector:'none', startConnector:'none', startScrewOffsetMm:15, startScrewLen:8, startScrewD:5, startScrewCount:6, startScrewExtraDiameterMm:0, startScrewEdgeMm:null, startScrewRound:false, visible:true,
     decoupled:false, inShape:'round', inWidthMm:100, inHeightMm:100 },
-  { id:3, label:'Uitgang', lengthMm:200, shape:'rect',  widthMm:140, heightMm:80,  wallMm:3, bendDeg:0,  bendAxis:'X', bendStart:0, bendEnd:100, connector:'none', visible:true,
+  { id:3, label:'Uitgang', lengthMm:200, shape:'rect',  widthMm:140, heightMm:80,  wallMm:3, bendDeg:0,  bendAxis:'X', bendStart:0, bendEnd:100, connector:'none', startConnector:'none', startScrewOffsetMm:15, startScrewLen:8, startScrewD:5, startScrewCount:6, startScrewExtraDiameterMm:0, startScrewEdgeMm:null, startScrewRound:false, visible:true,
     decoupled:false, inShape:'rect', inWidthMm:140, inHeightMm:80 },
 ];
 let nextId=4, activeIdx=0;
@@ -226,6 +263,35 @@ function getInProps(idx) {
   return { shape:prev.shape, w:prev.widthMm, h:prev.heightMm };
 }
 
+function getStartScrewPlacement(idx) {
+  const s=steps[idx];
+  const ringLen=s.startScrewLen||8;
+  const maxOffset=Math.max(0,s.lengthMm-ringLen);
+  let minOffset=0;
+  if (idx>0) {
+    const prev=steps[idx-1];
+    if (prev.connector==='slip') minOffset=prev.connectorLen||20;
+    if (prev.connector==='magnet') minOffset=Math.max(prev.connectorLen||10,prev.connectorDepth||3);
+  }
+  minOffset=Math.min(minOffset,maxOffset);
+  const offset=s.startScrewOffsetMm==null?15:s.startScrewOffsetMm;
+  return { offset:Math.min(maxOffset,Math.max(minOffset,offset)), minOffset, maxOffset, ringLen };
+}
+
+function getStartScrewEdgeLimits(s) {
+  const holeR=(s.startScrewD||5)/2+0.2;
+  const bumpAmp=holeR*2+2+(Math.max(0,s.startScrewExtraDiameterMm||0)/2);
+  const edgeClearance=0.4;
+  return { min:holeR+edgeClearance, max:Math.max(holeR+edgeClearance,bumpAmp-holeR-edgeClearance) };
+}
+
+function getStartScrewEdgeDistance(s) {
+  const limits=getStartScrewEdgeLimits(s);
+  const defaultDistance=(limits.min+limits.max)/2;
+  const requested=s.startScrewEdgeMm==null?defaultDistance:s.startScrewEdgeMm;
+  return Math.min(limits.max,Math.max(limits.min,requested));
+}
+
 // Dwarsdoorsnede-oppervlakte (mm²) op basis van de buitenmaat, voor een
 // gegeven vorm. Gebruikt om te signaleren wanneer een segment vernauwt
 // t.o.v. de allereerste ingang-oppervlakte van de hele buis.
@@ -242,7 +308,7 @@ function addStep() {
   const p=steps[steps.length-1];
   steps.push({ id:nextId++, label:'Segment '+(nextId-1), lengthMm:150,
     shape:p.shape, widthMm:p.widthMm, heightMm:p.heightMm,
-    wallMm:p.wallMm, bendDeg:0, bendAxis:'X', bendStart:0, bendEnd:100, connector:'none', visible:true,
+    wallMm:p.wallMm, bendDeg:0, bendAxis:'X', bendStart:0, bendEnd:100, connector:'none', startConnector:'none', startScrewOffsetMm:15, startScrewLen:8, startScrewD:5, startScrewCount:6, startScrewExtraDiameterMm:0, startScrewEdgeMm:null, startScrewRound:false, visible:true,
     decoupled:false, inShape:p.shape, inWidthMm:p.widthMm, inHeightMm:p.heightMm });
   activeIdx=steps.length-1;
   renderUI(); buildMesh();
@@ -313,7 +379,7 @@ function renderUI() {
       moveStep(dragSrcIdx, i);
       dragSrcIdx=null;
     });
-    d.innerHTML=`<div class="step-card-header"><span class="step-drag-handle" title="${t('dragHandle')}">⠿</span><span class="step-label">${i===0?'① ':i===steps.length-1?'⑥ ':'↓ '}${s.label}</span><span class="step-card-btns">${shrinks?`<span class="area-warn" title="${t('areaWarnTitle')}">⬇︎</span>`:''}<button class="btn-visible" onclick="toggleVisible(${i},event)" title="${s.visible===false?t('makeVisible'):t('hide')}">${s.visible===false?'🚫':'👁'}</button><button class="btn-remove" onclick="removeStep(${i},event)">✕</button></span></div><div class="step-dims">${dims}${s.connector==='magnet'?t('magnetSuffix'):s.connector==='slip'?t('slipSuffix'):''}${s.decoupled?t('decoupledSuffix'):''}${s.visible===false?t('hiddenSuffix'):''}</div>`;
+    d.innerHTML=`<div class="step-card-header"><span class="step-drag-handle" title="${t('dragHandle')}">⠿</span><span class="step-label">${i===0?'① ':i===steps.length-1?'⑥ ':'↓ '}${s.label}</span><span class="step-card-btns">${shrinks?`<span class="area-warn" title="${t('areaWarnTitle')}">⬇︎</span>`:''}<button class="btn-visible" onclick="toggleVisible(${i},event)" title="${s.visible===false?t('makeVisible'):t('hide')}">${s.visible===false?'🚫':'👁'}</button><button class="btn-remove" onclick="removeStep(${i},event)">✕</button></span></div><div class="step-dims">${dims}${s.startConnector==='screw'?t('startScrewSuffix'):''}${s.connector==='magnet'?t('magnetSuffix'):s.connector==='slip'?t('slipSuffix'):''}${s.decoupled?t('decoupledSuffix'):''}${s.visible===false?t('hiddenSuffix'):''}</div>`;
     list.appendChild(d);
   });
   document.getElementById('seg-count').textContent=steps.length+t('segShort');
@@ -385,9 +451,9 @@ function renderEditor() {
   // minimum op "Start bocht" (%).
   let minBendStartPct = 0;
   let slipNoticeHtml = '';
+  let requiredMm = 0, reason = '';
   if (!isFirst) {
     const prev = steps[activeIdx-1];
-    let requiredMm = 0, reason = '';
     if (prev.connector === 'slip') {
       requiredMm = prev.connectorLen || 20;
       reason = t('slipSokNotice', requiredMm);
@@ -395,14 +461,23 @@ function renderEditor() {
       requiredMm = Math.max(prev.connectorLen||10, prev.connectorDepth||3);
       reason = t('magnetRingNotice', requiredMm);
     }
-    if (requiredMm > 0) {
-      minBendStartPct = Math.min(99, Math.ceil((requiredMm / s.lengthMm) * 100));
-      if (s.bendStart < minBendStartPct) {
-        s.bendStart = minBendStartPct;
-        if (s.bendEnd <= s.bendStart) s.bendEnd = Math.min(100, s.bendStart+1);
-      }
-      slipNoticeHtml = `<div class="inherited-badge" style="background:#2a2010;border-color:#4a3a1a;color:#c0a05a">⟶ ${reason} ${t('bendMinSuffix', minBendStartPct)}</div>`;
+    if (prev.connector === 'slip') reason = t('slipSokNotice', requiredMm);
+  }
+  if (s.startConnector==='screw') {
+    const placement=getStartScrewPlacement(activeIdx);
+    const screwEnd=placement.offset+placement.ringLen;
+    if (screwEnd>requiredMm) {
+      requiredMm=screwEnd;
+      reason=t('startScrewStraight', requiredMm);
     }
+  }
+  if (requiredMm > 0) {
+    minBendStartPct = Math.min(99, Math.ceil((requiredMm / s.lengthMm) * 100));
+    if (s.bendStart < minBendStartPct) {
+      s.bendStart = minBendStartPct;
+      if (s.bendEnd <= s.bendStart) s.bendEnd = Math.min(100, s.bendStart+1);
+    }
+    slipNoticeHtml = `<div class="inherited-badge" style="background:#2a2010;border-color:#4a3a1a;color:#c0a05a">⟶ ${reason} ${t('bendMinSuffix', minBendStartPct)}</div>`;
   }
 
   const baseArea = baselineArea();
@@ -416,6 +491,7 @@ function renderEditor() {
   };
 
   const shapeLabelFor = sh => sh==='round'?t('shapeRound'):sh==='square'?t('shapeSquare'):t('shapeRect');
+  const screwEdgeLimits=getStartScrewEdgeLimits(s);
 
   ed.innerHTML=`
     <h3>${t('segmentTitle', activeIdx+1)}: ${s.label}</h3>
@@ -453,6 +529,26 @@ function renderEditor() {
       <div class="field"><label>${t('bendEnd')}</label><input type="number" min="1" max="100" step="1" value="${s.bendEnd}" oninput="updClamp('bendEnd',+this.value,${s.bendStart+1},100)"></div>
     </div>
     <div style="font-size:11px;color:#555577;margin-bottom:8px">${t('straightHint')}</div>
+    <div class="section-title">${t('startCouplingTitle')}</div>
+    <div class="shape-picker" style="grid-template-columns:1fr 1fr">
+      <button class="shape-btn${s.startConnector==='none'?' active':''}" onclick="upd('startConnector','none')">${t('continuous')}</button>
+      <button class="shape-btn${s.startConnector==='screw'?' active':''}" onclick="upd('startConnector','screw')">${t('startScrew')}</button>
+    </div>
+    ${s.startConnector==='screw'?`<div class="field-row" style="margin-top:6px">
+      <div class="field"><label>${t('startDistance')}</label><input type="number" min="${getStartScrewPlacement(activeIdx).minOffset}" max="${getStartScrewPlacement(activeIdx).maxOffset}" step="1" value="${getStartScrewPlacement(activeIdx).offset}" oninput="upd('startScrewOffsetMm',Math.min(${getStartScrewPlacement(activeIdx).maxOffset},Math.max(${getStartScrewPlacement(activeIdx).minOffset},+this.value)))"></div>
+      <div class="field"><label>${t('ringThickness')}</label><input type="number" min="2" max="20" step="0.5" value="${s.startScrewLen||8}" oninput="upd('startScrewLen',+this.value)"></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>${t('screwDiameter')}</label><input type="number" min="1" max="20" step="0.1" value="${s.startScrewD||5}" oninput="upd('startScrewD',+this.value)"></div>
+      <div class="field"><label>${t('screwCount')}</label><input type="number" min="2" max="24" step="1" value="${s.startScrewCount||6}" oninput="upd('startScrewCount',+this.value)"></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>${t('screwExtraDiameter')}</label><input type="number" min="0" max="200" step="1" value="${s.startScrewExtraDiameterMm||0}" oninput="updClamp('startScrewExtraDiameterMm',+this.value,0,200)"></div>
+      <div class="field"><label>${t('screwHoleEdgeDistance')}</label><input type="number" min="${screwEdgeLimits.min.toFixed(1)}" max="${screwEdgeLimits.max.toFixed(1)}" step="0.1" value="${getStartScrewEdgeDistance(s).toFixed(1)}" oninput="updClamp('startScrewEdgeMm',+this.value,${screwEdgeLimits.min},${screwEdgeLimits.max})"></div>
+    </div>
+    <div class="toggle-row"><input type="checkbox" id="screw-round" ${s.startScrewRound?'checked':''} onchange="upd('startScrewRound',this.checked)"><label for="screw-round">${t('screwRoundRing')}</label></div>
+    <div style="font-size:11px;color:#555577;margin-bottom:8px;line-height:1.5">${t('screwRoundHint')}</div>
+    <div style="font-size:11px;color:#5a7a9a;margin-bottom:8px;line-height:1.6;background:#1a2030;border-radius:5px;padding:7px 10px;border:1px solid #2a3a5a">${t('screwHint')}</div>`:''}
     <div class="section-title">${t('couplingTitle')}</div>
     <div class="shape-picker" style="grid-template-columns:1fr 1fr 1fr">
       <button class="shape-btn${s.connector==='none'?' active':''}" onclick="upd('connector','none')">
@@ -560,6 +656,88 @@ function updInShape(key,val) {
 }
 function updClamp(key,val,mn,mx){ steps[activeIdx][key]=Math.min(mx,Math.max(mn,val)); renderUI(); buildMesh(); }
 function upd(key,val){ steps[activeIdx][key]=val; renderUI(); buildMesh(); }
+
+function exportSettings() {
+  const data={
+    format:'exhaust-tube-settings',
+    version:1,
+    exportedAt:new Date().toISOString(),
+    steps
+  };
+  const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+  const url=URL.createObjectURL(blob);
+  const anchor=document.createElement('a');
+  anchor.href=url;
+  anchor.download=`${t('exportSettingsFile')}.json`;
+  anchor.click();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+
+function normalizeImportedSteps(data) {
+  if (!data || data.format!=='exhaust-tube-settings' || data.version!==1 || !Array.isArray(data.steps) || data.steps.length<1 || data.steps.length>500) {
+    throw new Error('Invalid settings format');
+  }
+  const shapes=['round','square','rect'];
+  const connectors=['none','magnet','slip'];
+  const startConnectors=['none','screw'];
+  const axes=['X','Y','Z'];
+  const numericKeys=['lengthMm','widthMm','heightMm','wallMm','bendDeg','bendStart','bendEnd'];
+  const imported=data.steps.map((step,index)=>{
+    if (!step || typeof step!=='object' || typeof step.label!=='string' ||
+        !shapes.includes(step.shape) || !connectors.includes(step.connector) ||
+        !startConnectors.includes(step.startConnector||'none') || !axes.includes(step.bendAxis)) {
+      throw new Error('Invalid segment settings');
+    }
+    for (const key of numericKeys) {
+      if (!Number.isFinite(step[key])) throw new Error('Invalid numeric setting');
+    }
+    if (step.lengthMm<=0 || step.widthMm<=0 || step.heightMm<=0 || step.wallMm<=0 ||
+        step.bendDeg < -360 || step.bendDeg > 360 || step.bendStart<0 ||
+        step.bendEnd>100 || step.bendStart>=step.bendEnd) {
+      throw new Error('Out-of-range segment setting');
+    }
+    const id=Number.isInteger(step.id)&&step.id>0?step.id:index+1;
+    return {
+      ...step,
+      id,
+      startConnector:step.startConnector||'none',
+      startScrewOffsetMm:Number.isFinite(step.startScrewOffsetMm)?step.startScrewOffsetMm:15,
+      startScrewLen:Number.isFinite(step.startScrewLen)?step.startScrewLen:8,
+      startScrewD:Number.isFinite(step.startScrewD)?step.startScrewD:5,
+      startScrewCount:Number.isFinite(step.startScrewCount)?step.startScrewCount:6,
+      startScrewExtraDiameterMm:Number.isFinite(step.startScrewExtraDiameterMm)?Math.max(0,step.startScrewExtraDiameterMm):0,
+      startScrewEdgeMm:Number.isFinite(step.startScrewEdgeMm)?step.startScrewEdgeMm:null,
+      startScrewRound:step.startScrewRound===true,
+      visible:step.visible!==false,
+      decoupled:step.decoupled===true
+    };
+  });
+  if (new Set(imported.map(step=>step.id)).size!==imported.length) throw new Error('Duplicate segment IDs');
+  return imported;
+}
+
+async function importSettingsFile(input) {
+  const file=input.files&&input.files[0];
+  if (!file) return;
+  try {
+    const data=JSON.parse(await file.text());
+    const imported=normalizeImportedSteps(data);
+    if (!window.confirm(t('confirmImportSettings'))) return;
+    steps.splice(0,steps.length,...imported);
+    nextId=Math.max(...steps.map(step=>step.id))+1;
+    activeIdx=0;
+    renderUI();
+    buildMesh();
+  } catch(error) {
+    if (error instanceof SyntaxError || error.message==='Invalid settings format' || error.message==='Invalid segment settings' || error.message==='Invalid numeric setting' || error.message==='Out-of-range segment setting' || error.message==='Duplicate segment IDs') {
+      window.alert(t('invalidSettingsFile'));
+    } else {
+      throw error;
+    }
+  } finally {
+    input.value='';
+  }
+}
 
 // ─── Profile: returns array of [x,y] points for a cross-section ──
 function makeProfile(shape, w, h, wall, inner) {
@@ -760,11 +938,11 @@ function buildSegmentGeo(inShape,inW,inH, outShape,outW,outH, wall, len, bendDeg
   return geo;
 }
 
-function getEndFrame(len, bendDeg, bendAxis, bendStart, bendEnd) {
+function getSegmentFrame(t, len, bendDeg, bendAxis, bendStart, bendEnd) {
   const STEPS=Math.max(12,Math.round(Math.abs(bendDeg)/2)+1);
   let tVec=new THREE.Vector3(0,1,0),rVec=new THREE.Vector3(1,0,0),uVec=new THREE.Vector3(0,0,1);
   for(let si=1;si<=STEPS;si++){
-    const d=segLocalDir(si/STEPS,bendDeg,bendAxis,bendStart,bendEnd);
+    const d=segLocalDir(t*si/STEPS,bendDeg,bendAxis,bendStart,bendEnd);
     const newT=new THREE.Vector3(d[0],d[1],d[2]).normalize();
     const axis=new THREE.Vector3().crossVectors(tVec,newT);
     if(axis.lengthSq()>1e-12){
@@ -775,7 +953,11 @@ function getEndFrame(len, bendDeg, bendAxis, bendStart, bendEnd) {
     }
     tVec=newT.clone();
   }
-  return {pos:segLocalPos(1,len,bendDeg,bendAxis,bendStart,bendEnd),tVec,rVec,uVec};
+  return {pos:segLocalPos(t,len,bendDeg,bendAxis,bendStart,bendEnd),tVec,rVec,uVec};
+}
+
+function getEndFrame(len, bendDeg, bendAxis, bendStart, bendEnd) {
+  return getSegmentFrame(1,len,bendDeg,bendAxis,bendStart,bendEnd);
 }
 
 // ─── Connector geometry ──────────────────────────────────────────
@@ -827,7 +1009,7 @@ function makeCylinderGeo(cx,cy,cz, ax,ay,az, radius, height, N=20) {
 function makeMagneticCouplingGeo(shape, w, h, wall,
     len, bendDeg, bendAxis, bendStart, bendEnd,
     ringThick, magnetD, magnetCount, magnetThick,
-    female, frameOverride) {
+  female, frameOverride, throughHoles=false, profileOverride=null, extraDiameter=0, holeEdgeDistance=null, roundFlange=false) {
 
   const frame = (female && frameOverride)
     ? frameOverride
@@ -846,6 +1028,7 @@ function makeMagneticCouplingGeo(shape, w, h, wall,
   // volledig losgekoppeld van zowel Ringdikte als de buiswanddikte, zodat
   // het wijzigen van die twee instellingen de ringbreedte niet beïnvloedt.
   const bumpAmp   = pocketR*2 + 2;
+  const extraRadius = throughHoles ? Math.max(0,extraDiameter)/2 : 0;
   // Het magneetgat loopt nu altijd volledig door de Ringdikte heen (zie
   // buildCapWithHoles/makePocketGeo verderop) — geen aparte bodemdikte
   // meer nodig.
@@ -855,7 +1038,12 @@ function makeMagneticCouplingGeo(shape, w, h, wall,
   // Basiscontour = de ECHTE buitenrand van de buis (rond/vierkant/rechthoek),
   // dezelfde profielfunctie als de buiswand zelf gebruikt, zodat de ring
   // altijd exact aansluit — geen benaderde cirkel meer.
-  const baseProfile = resampleProfile(makeProfile(shape, w, h, 0, false), N);
+  const baseProfile = profileOverride
+    ? resampleProfile(profileOverride, N)
+    : resampleProfile(makeProfile(shape, w, h, 0, false), N);
+  const roundFlangeRadius = throughHoles && roundFlange
+    ? Math.max(...baseProfile.map(point=>Math.hypot(point[0],point[1]))) + bumpAmp + extraRadius
+    : 0;
   // Binnenboring wordt per punt afgeleid van het buitenoppervlak zelf
   // (zie hoofdlus verderop), zodat de wanddikte overal gelijk blijft —
   // ook op de bulten, niet alleen bij de buisaansluiting.
@@ -872,7 +1060,8 @@ function makeMagneticCouplingGeo(shape, w, h, wall,
     const p = baseProfile[i];
     const d = Math.hypot(p[0], p[1]) || 1;
     const nx = p[0]/d, ny = p[1]/d;
-    const bump = bumpAmp * waveFactorAt(i);
+    if (roundFlangeRadius) return [nx*roundFlangeRadius,ny*roundFlangeRadius];
+    const bump = bumpAmp * waveFactorAt(i) + extraRadius;
     return [p[0] + nx*bump, p[1] + ny*bump];
   }
 
@@ -942,7 +1131,13 @@ function makeMagneticCouplingGeo(shape, w, h, wall,
     const i = Math.round(ti*stepIdx) % N;
     const pOuter = outerBumpPointAt(i);
     const pBase  = baseProfile[i];
-    magnetPositions.push([ (pOuter[0]+pBase[0])/2, (pOuter[1]+pBase[1])/2 ]);
+    if (throughHoles && Number.isFinite(holeEdgeDistance)) {
+      const dx=pOuter[0]-pBase[0], dy=pOuter[1]-pBase[1];
+      const length=Math.hypot(dx,dy)||1;
+      magnetPositions.push([pOuter[0]-dx/length*holeEdgeDistance,pOuter[1]-dy/length*holeEdgeDistance]);
+    } else {
+      magnetPositions.push([ (pOuter[0]+pBase[0])/2, (pOuter[1]+pBase[1])/2 ]);
+    }
   }
 
   // ── Doppen via ECHTE 2D polygoon-triangulatie (earcut): de dop is de
@@ -995,7 +1190,7 @@ function makeMagneticCouplingGeo(shape, w, h, wall,
     return geo;
   }
   allGeos.push(buildCapWithHoles(0, false, true));     // naad-kant: MET gaten (magneten raken elkaar)
-  allGeos.push(buildCapWithHoles(axLen, true, false)); // diepe kant: VOLLEDIG DICHT (gesloten achterkant)
+  allGeos.push(buildCapWithHoles(axLen, true, throughHoles)); // magneetbodem is dicht; schroefgaten lopen door
 
   // Gatwand + bodem: de diepte van het bakje volgt nu ALTIJD exact de
   // ingestelde Magneet dikte, ongeacht hoe groot de Ringdikte is. Loopt
@@ -1003,10 +1198,17 @@ function makeMagneticCouplingGeo(shape, w, h, wall,
   // stuk gewoon massief materiaal achter de bodem — de bakjesdiepte zelf
   // verandert niet mee met Ringdikte.
   for (const mp of magnetPositions) {
-    allGeos.push(makePocketGeo(ep, right, up2, fwdV, sign, mp, pocketR, magnetThick, Np));
+    allGeos.push(throughHoles
+      ? makeThroughHoleGeo(ep, right, up2, fwdV, sign, mp, pocketR, axLen, Np)
+      : makePocketGeo(ep, right, up2, fwdV, sign, mp, pocketR, magnetThick, Np));
   }
 
   return mergeGeos(allGeos);
+}
+
+function makeScrewCouplingGeo(shape, w, h, wall, frame, profile, ringThick, screwD, screwCount, extraDiameter, holeEdgeDistance, roundFlange) {
+  return makeMagneticCouplingGeo(shape, w, h, wall, 0,0,'X',0,100,
+    ringThick, screwD, screwCount, 0, true, frame, true, profile, extraDiameter, holeEdgeDistance, roundFlange);
 }
 
 // Wand + bodem van één rond bakje op een gegeven lokaal 2D-punt (px,py):
@@ -1061,6 +1263,31 @@ function makePocketGeo(ep, right, up2, fwdV, sign, p2d, pocketR, depth, Np) {
 
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute(verts.flat(), 3));
+  geo.setIndex(idx);
+  geo.computeVertexNormals();
+  return geo;
+}
+
+function makeThroughHoleGeo(ep, right, up2, fwdV, sign, p2d, holeR, depth, Np) {
+  const near=[], far=[];
+  for (let i=0;i<Np;i++) {
+    const angle=(Np-1-i)/Np*Math.PI*2;
+    const px=p2d[0]+Math.cos(angle)*holeR;
+    const py=p2d[1]+Math.sin(angle)*holeR;
+    const x=ep[0]+right.x*px+up2.x*py;
+    const y=ep[1]+right.y*px+up2.y*py;
+    const z=ep[2]+right.z*px+up2.z*py;
+    near.push([x,y,z]);
+    far.push([x-fwdV.x*depth*sign,y-fwdV.y*depth*sign,z-fwdV.z*depth*sign]);
+  }
+  const verts=[...near,...far].flat();
+  const idx=[];
+  for (let i=0;i<Np;i++) {
+    const n=(i+1)%Np;
+    idx.push(i,Np+n,Np+i, i,n,Np+n);
+  }
+  const geo=new THREE.BufferGeometry();
+  geo.setAttribute('position',new THREE.Float32BufferAttribute(verts,3));
   geo.setIndex(idx);
   geo.computeVertexNormals();
   return geo;
@@ -1142,20 +1369,22 @@ function mergeGeos(geos) {
 // Dit draait vóór elke geometrie-opbouw, dus het werkt ook als je het
 // betreffende segment nooit zelf hebt geopend in de editor.
 function enforceSlipBendConstraints() {
-  for (let i=1; i<steps.length; i++) {
-    const prev = steps[i-1];
+  for (let i=0; i<steps.length; i++) {
     const s = steps[i];
     let requiredStraightMm = 0;
-    if (prev.connector === 'slip') {
-      // De sok van de schuifkoppeling steekt recht in dit segment.
-      requiredStraightMm = Math.max(requiredStraightMm, prev.connectorLen || 20);
+    if (s.startConnector === 'screw') {
+      const placement=getStartScrewPlacement(i);
+      requiredStraightMm=Math.max(requiredStraightMm,placement.offset+placement.ringLen);
     }
-    if (prev.connector === 'magnet') {
-      // De magnetische ring gaat uit van een RECHTE buis over zijn
-      // volledige ringdikte — als dit segment binnen die diepte al
-      // buigt, wijkt de echte buis af van de ring en ontstaat een kier.
-      const ringAxLen = Math.max(prev.connectorLen||10, prev.connectorDepth||3);
-      requiredStraightMm = Math.max(requiredStraightMm, ringAxLen);
+    if (i>0) {
+      const prev = steps[i-1];
+      if (prev.connector === 'slip') {
+        requiredStraightMm=Math.max(requiredStraightMm,prev.connectorLen||20);
+      }
+      if (prev.connector === 'magnet') {
+        const ringAxLen=Math.max(prev.connectorLen||10,prev.connectorDepth||3);
+        requiredStraightMm=Math.max(requiredStraightMm,ringAxLen);
+      }
     }
     if (requiredStraightMm <= 0) continue;
     const minPct = Math.min(99, Math.ceil((requiredStraightMm / s.lengthMm) * 100));
@@ -1193,6 +1422,21 @@ function buildMesh() {
       s.shape, s.widthMm, s.heightMm,
       s.wallMm, s.lengthMm, s.bendDeg, s.bendAxis, s.bendStart, s.bendEnd
     ));
+
+    if(s.startConnector==='screw') {
+      const placement=getStartScrewPlacement(si);
+      const t=placement.offset/s.lengthMm;
+      const inputProfile=resampleProfile(makeProfile(inp.shape,inp.w,inp.h,0,false),32);
+      const outputProfile=resampleProfile(makeProfile(s.shape,s.widthMm,s.heightMm,0,false),32);
+      const profile=inputProfile.map((point,index)=>[
+        point[0]*(1-t)+outputProfile[index][0]*t,
+        point[1]*(1-t)+outputProfile[index][1]*t
+      ]);
+      const frame=getSegmentFrame(t,s.lengthMm,s.bendDeg,s.bendAxis,s.bendStart,s.bendEnd);
+      geos.push(makeScrewCouplingGeo(s.shape,s.widthMm,s.heightMm,s.wallMm,frame,profile,
+        placement.ringLen,s.startScrewD||5,s.startScrewCount||6,
+        s.startScrewExtraDiameterMm||0,getStartScrewEdgeDistance(s),s.startScrewRound===true));
+    }
 
     // Magnetische koppeling: ring aan einde van dit segment (mannelijk)
     if(s.connector==='magnet') {
@@ -1370,11 +1614,11 @@ function resetView(){rotX=0.4;rotY=0.6;zoom=1;panTarget.set(0,-100,0);updateCame
 // ─── STL export ─────────────────────────────────────────────────
 // Bepaalt hoe de segmenten opgeknipt worden in losse printbare delen:
 // een "doorlopende" koppeling houdt twee segmenten in hetzelfde deel,
-// een magnetische of schuifkoppeling vormt een knip tussen twee delen.
+// een eindkoppeling of beginkoppeling vormt een knip tussen twee delen.
 function computePartGroups() {
   const groups = [[0]];
   for (let i=0; i<steps.length-1; i++) {
-    if (steps[i].connector === 'none') {
+    if (steps[i].connector === 'none' && steps[i+1].startConnector !== 'screw') {
       groups[groups.length-1].push(i+1);
     } else {
       groups.push([i+1]);

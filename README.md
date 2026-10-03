@@ -41,7 +41,10 @@ Below both the input and output dimensions, the editor shows the cross-sectional
 
 ### Bend axis and bend zone
 - **Bend axis (X/Y/Z)** — which local axis the segment bends around.
-- **Bend start (%) / Bend end (%)** — which portion of the segment length actually bends. Before the start and after the end, the tube runs straight. A minimum value for "Bend start" is enforced automatically when the previous segment has a slip or magnetic coupling (see Couplings), so the tube doesn't start bending inside that coupling.
+- **Bend start (%) / Bend end (%)** — which portion of the segment length actually bends. Before the start and after the end, the tube runs straight. A minimum value for "Bend start" is enforced automatically when a coupling needs a straight tube section.
+
+### Coupling at start of segment
+- **Screw flange** — a ring with axial through-holes, placed at a configurable distance from the tube inlet. Set its distance, ring thickness, screw-hole diameter, and hole count. The extra flange diameter is the total increase (for example, +10 mm adds 5 mm per side). Set the screw-hole center distance from the outer edge; it is kept within the available flange width. Choose a perfectly round outline or the default wavy outline that follows the screw-hole positions. This is independent of the coupling at the segment end, so it can be combined with any end option. The flange's ring section stays straight automatically.
 
 ### Coupling at end of segment
 Three options for how this segment transitions into the next:
@@ -63,7 +66,7 @@ Turn on "Decoupled" to make this segment independent from the rest of the chain:
 The download button at the bottom right of the 3D view shows how many separate parts the model contains, based on the couplings:
 
 - Only continuous couplings → a single `.stl` file.
-- One or more magnetic/slip couplings → a `.zip` file containing a separate `.stl` file per part (split at every non-continuous coupling), so each part can be printed independently.
+- One or more start screw, magnetic, or slip couplings → a `.zip` file containing a separate `.stl` file per part (split at every coupling boundary), so each part can be printed independently.
 
 ## Technical notes
 
