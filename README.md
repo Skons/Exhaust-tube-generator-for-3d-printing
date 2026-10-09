@@ -9,6 +9,7 @@ Open [Exhaust Tube STL Generator](http://skons.github.io/Exhaust-tube-generator-
 ## Interface overview
 
 - **Left panel** — list of segments (tube sections) and the settings for the currently selected segment.
+  - **Export / Import** — save the segment configuration to a JSON file or load a previously saved configuration.
   - **Scroll wheel on number fields** - move the mouse over a number field and scroll to adjust the value step by step, without needing to click first.
   - Drag and drop segments to move the order
 - **Right panel (3D view)** — live preview of the tube.
@@ -49,14 +50,15 @@ Below both the input and output dimensions, the editor shows the cross-sectional
 ### Coupling at end of segment
 Three options for how this segment transitions into the next:
 
-- **Continuous** — seamless transition, no separation. This also determines where the STL export is split: continuous segments stay together as a single downloadable part.
+- **Continuous** — adjacent segments connect directly without a coupling. Their shared ends are left open in the mesh so the tube walls join without duplicate internal end caps. Continuous segments stay together as a single downloadable part.
 - **Magnetic coupling** — a wavy ring with round bumps, each containing a round magnet hole, used to join the two parts together with magnets. Both halves (male on this segment, female on the next) share the same shape and holes, so they fit together exactly.
   - **Ring thickness (mm)** — how far the ring extends into the tube, and how far the bumps visibly protrude.
   - **Magnet ⌀ / Magnet thickness (mm)** — dimensions of the disc magnets to be used (adjustable in 0.1mm steps). The ring thickness automatically increases if the magnet is thicker than the set ring thickness.
   - **Number of magnets** — evenly distributed around the circumference.
 - **Slip** — a sleeve that slides over the next segment, for a glued connection.
-  - **Sleeve length (mm)** — how far the sleeve extends over the next segment.
-  - **Clearance (mm)** — gap between sleeve and tube (minimum 0.1mm, guaranteeing it can always be slid together).
+  - **Insertion depth (mm)** — how far the next segment enters the sleeve, which extends beyond the end of the segment carrying the coupling.
+  - **Clearance per side (mm)** — gap on each side between the next tube's outer wall and the sleeve bore (minimum 0.1mm per side).
+
 
 ### Decoupled mode
 Turn on "Decoupled" to make this segment independent from the rest of the chain: its input dimensions are no longer inherited from the previous segment, and this segment's own output dimensions are no longer passed on to the next segment either. Useful for standalone parts that don't need to connect seamlessly. When enabled, separate fields appear to set this segment's own input shape and dimensions.

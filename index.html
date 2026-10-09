@@ -199,9 +199,9 @@ const translations = {
   screwDiameter: { nl:'Schroefgat ⌀ (mm)', en:'Screw hole ⌀ (mm)' },
   screwCount: { nl:'Aantal schroefgaten', en:'Number of screw holes' },
   screwHint: { nl:'🔩 Extra ringdiameter is de totale vergroting (+10 mm = 5 mm extra per zijde). De gatpositie is gemeten van het hart van het gat tot de buitenrand en past zich aan de beschikbare ringbreedte aan.', en:'🔩 Extra flange diameter is the total increase (+10 mm = 5 mm per side). Hole position is measured from its center to the outer edge and is limited to the available flange width.' },
-  sleeveLength: { nl:'Sok lengte (mm)', en:'Sleeve length (mm)' },
-  clearance: { nl:'Speling (mm)', en:'Clearance (mm)' },
-  slipHint: { nl:'↔ <b>Speling</b> = ruimte aan elke kant tussen de buitenwand van het volgende segment en de binnenwand van de sok. Bij 0.3mm past de sok er licht strak omheen — ideaal voor lijm. Groter = losser; kleiner = heel strak (kan lastig printen).', en:'↔ <b>Clearance</b> = space on each side between the outer wall of the next segment and the inner wall of the sleeve. At 0.3mm the sleeve fits snugly around it — ideal for glue. Larger = looser; smaller = very tight (can be hard to print).' },
+  sleeveLength: { nl:'Insteekdiepte (mm)', en:'Insertion depth (mm)' },
+  clearance: { nl:'Tolerantie per zijde (mm)', en:'Clearance per side (mm)' },
+  slipHint: { nl:'↔ De insteekdiepte bepaalt hoe ver de volgende buis in de schuif past. De tolerantie is de ruimte aan elke kant tussen de buitenwand van die buis en de binnenwand van de schuif; de opening wordt dus tweemaal deze waarde groter in diameter. De overgang aan de buitenkant loopt terug over de huidige buis en verkort de insteekdiepte niet.', en:'↔ Insertion depth sets how far the next tube fits into the sleeve. Clearance is the gap on each side between that tube\'s outer wall and the sleeve\'s inner wall, so the opening diameter increases by twice this value. The outer transition runs back over the current tube and does not reduce insertion depth.' },
   decoupledTitle: { nl:'Losgekoppelde modus', en:'Decoupled mode' },
   decoupled: { nl:'Losgekoppeld', en:'Decoupled' },
   decoupledHint: { nl:'Zodra dit aan staat, wordt de ingang-afmeting van dit segment NIET meer overgenomen van het vorige segment, en werken wijzigingen aan dit segment niet meer door naar het volgende segment. Handig voor losstaande onderdelen die niet naadloos hoeven aan te sluiten.', en:'Once this is on, this segment\'s input dimensions are NO LONGER inherited from the previous segment, and changes to this segment no longer propagate to the next segment. Useful for standalone parts that don\'t need to connect seamlessly.' },
@@ -862,7 +862,7 @@ function segEndPos(len, bendDeg, bendAxis, bendStart, bendEnd) { return segLocal
 // Parallel transport: we track right/up axes slice-by-slice by
 // rotating them by the small angular step between consecutive
 // tangents. This avoids any twist around the tube axis.
-function buildSegmentGeo(inShape,inW,inH, outShape,outW,outH, wall, len, bendDeg, bendAxis, bendStart, bendEnd) {
+function buildSegmentGeo(inShape,inW,inH, outShape,outW,outH, wall, len, bendDeg, bendAxis, bendStart, bendEnd, capStart=true, capEnd=true) {
   const SUBSEGS = Math.max(12, Math.round(Math.abs(bendDeg)/2)+1);
   const N = 32;
 
@@ -922,13 +922,14 @@ function buildSegmentGeo(inShape,inW,inH, outShape,outW,outH, wall, len, bendDeg
       const n=(k+1)%N;
       idx.push(b0+k, b1+k, b1+n,  b0+k, b1+n, b0+n);        // outer
       idx.push(b0+N+k, b0+N+n, b1+N+n,  b0+N+k, b1+N+n, b1+N+k); // inner
-      if(si===SUBSEGS-1) idx.push(b1+k, b1+N+k, b1+N+n,  b1+k, b1+N+n, b1+n); // end cap
+      if(capEnd && si===SUBSEGS-1) idx.push(b1+k, b1+N+k, b1+N+n,  b1+k, b1+N+n, b1+n); // end cap
     }
   }
-  // start cap
-  for(let k=0;k<N;k++){
-    const n=(k+1)%N;
-    idx.push(k, n, N+n,  k, N+n, N+k);
+  if(capStart) {
+    for(let k=0;k<N;k++){
+      const n=(k+1)%N;
+      idx.push(k, n, N+n,  k, N+n, N+k);
+    }
   }
 
   const geo=new THREE.BufferGeometry();
@@ -1321,10 +1322,11 @@ function makeSlipConnectorGeo(shape, w, h, wall, len, bendDeg, bendAxis, bendSta
 
   const sokOW = w + wall*2 + cl*2, sokOH = h + wall*2 + cl*2;
   const sokIW = w + cl*2,          sokIH = h + cl*2;
+  const rampDepth = Math.min(sl/2, Math.max(4, wall*4));
+  const rootOverlap = Math.max(0, Math.min(0.25, wall/4, (w-wall*2)/4, (h-wall*2)/4));
 
   function ring3d(profW, profH, offset, inner) {
-    const wallT = inner ? (sokOW-sokIW)/2 : 0;
-    const pts = resampleProfile(makeProfile(shape, profW, profH, wallT, inner), N);
+    const pts = resampleProfile(makeProfile(shape, profW, profH, 0, inner), N);
     return pts.map(([px,py]) => [
       ep[0]+right.x*px+up2.x*py+fwdV.x*offset,
       ep[1]+right.y*px+up2.y*py+fwdV.y*offset,
@@ -1332,17 +1334,56 @@ function makeSlipConnectorGeo(shape, w, h, wall, len, bendDeg, bendAxis, bendSta
     ]);
   }
 
-  const or0=ring3d(sokOW,sokOH,0,false), or1=ring3d(sokOW,sokOH,sl,false);
-  const ir0=ring3d(sokIW,sokIH,0,true),  ir1=ring3d(sokIW,sokIH,sl,true);
+  // Buitenkant: ramp (buismaat -> sokmaat) en daarna de rechte sok.
+  const outerStations=[
+    {offset:-rampDepth, w:w+rootOverlap*2, h:h+rootOverlap*2},
+    {offset:0, w:sokOW, h:sokOH},
+    {offset:sl, w:sokOW, h:sokOH}
+  ];
+  // Binnenkant: volgt de binnenwand van de buis (iets de wand in, zodat er
+  // geen spleet kan ontstaan) tot offset 0 en springt daar via een schouder
+  // naar de sok-binnenmaat. Zo sluit de sok volledig aan op de buiswand.
+  const tubeIW=w-wall*2+rootOverlap*2, tubeIH=h-wall*2+rootOverlap*2;
+  const innerStations=[
+    {offset:-rampDepth, w:tubeIW, h:tubeIH},
+    {offset:0, w:tubeIW, h:tubeIH},
+    {offset:0, w:sokIW, h:sokIH},
+    {offset:sl, w:sokIW, h:sokIH}
+  ];
+  const outerRings=outerStations.map(st=>ring3d(st.w,st.h,st.offset,false));
+  const innerRings=innerStations.map(st=>ring3d(st.w,st.h,st.offset,false));
   const verts=[], idx=[];
-  [...or0,...ir0,...or1,...ir1].forEach(p=>verts.push(...p));
+  outerRings.flat().forEach(p=>verts.push(...p));
+  const innerBase=outerRings.length*N;
+  innerRings.flat().forEach(p=>verts.push(...p));
+  const oc=outerRings.length, ic=innerRings.length;
   for(let k=0;k<N;k++){
     const n=(k+1)%N;
-    idx.push(k,n,2*N+n, k,2*N+n,2*N+k);
-    idx.push(N+k,3*N+k,3*N+n, N+k,3*N+n,N+n);
-    idx.push(k,N+k,N+n, k,N+n,n);
-    idx.push(2*N+k,2*N+n,3*N+n, 2*N+k,3*N+n,3*N+k);
+    for(let ring=0;ring<oc-1;ring++){
+      const a0=ring*N+k, a1=ring*N+n, b0=(ring+1)*N+k, b1=(ring+1)*N+n;
+      idx.push(a0,a1,b1,a0,b1,b0);
+    }
+    for(let ring=0;ring<ic-1;ring++){
+      const a0=innerBase+ring*N+k, a1=innerBase+ring*N+n;
+      const b0=innerBase+(ring+1)*N+k, b1=innerBase+(ring+1)*N+n;
+      if(innerStations[ring].offset===innerStations[ring+1].offset){
+        // schouder op offset 0: vlak ringvlak van buis-binnenmaat naar sok-binnenmaat
+        idx.push(b0,b1,a1,b0,a1,a0);
+      } else {
+        idx.push(a0,b0,b1,a0,b1,a1);
+      }
+    }
+    // startvlak van het overgangsstuk (sluit de mesh; ligt in de buiswand)
+    const os0=k, os1=n, is0=innerBase+k, is1=innerBase+n;
+    idx.push(os0,is0,is1,os0,is1,os1);
+    // eindvlak van de sok
+    const oe=(oc-1)*N+k, oen=(oc-1)*N+n;
+    const ie=innerBase+(ic-1)*N+k, ien=innerBase+(ic-1)*N+n;
+    idx.push(oe,oen,ien,oe,ien,ie);
   }
+  // Winding omkeren zodat de normalen naar buiten wijzen (positief volume).
+  // Anders trekt de slicer de sok van de buiswand af en ontstaat een lege laag.
+  for(let i=0;i<idx.length;i+=3){const t=idx[i+1];idx[i+1]=idx[i+2];idx[i+2]=t;}
   const geo=new THREE.BufferGeometry();
   geo.setAttribute('position',new THREE.Float32BufferAttribute(verts.flat(),3));
   geo.setIndex(idx); geo.computeVertexNormals();
@@ -1417,10 +1458,13 @@ function buildMesh() {
     // Zo blijft de grondpositionering (die op de VOLLEDIGE geometrie
     // gebaseerd is) stabiel, ongeacht welke segmenten je in/uit schakelt.
     const geos=[];
+    const hasPreviousContinuousJoin=si>0 && steps[si-1].connector==='none' && s.startConnector!=='screw';
+    const hasNextContinuousJoin=si<steps.length-1 && s.connector==='none' && steps[si+1].startConnector!=='screw';
     geos.push(buildSegmentGeo(
       inp.shape, inp.w, inp.h,
       s.shape, s.widthMm, s.heightMm,
-      s.wallMm, s.lengthMm, s.bendDeg, s.bendAxis, s.bendStart, s.bendEnd
+      s.wallMm, s.lengthMm, s.bendDeg, s.bendAxis, s.bendStart, s.bendEnd,
+      !hasPreviousContinuousJoin, !hasNextContinuousJoin
     ));
 
     if(s.startConnector==='screw') {
