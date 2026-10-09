@@ -188,6 +188,13 @@ const translations = {
   screwHoleEdgeDistance: { nl:'Hartafstand gat tot buitenrand (mm)', en:'Hole-center distance to outer edge (mm)' },
   screwRoundRing: { nl:'Schroefring perfect rond', en:'Perfectly round screw flange' },
   screwRoundHint: { nl:'Uit: de buitenrand volgt de schroefgaten. Aan: een volledig ronde buitenrand.', en:'Off: the outer edge follows the screw holes. On: a perfectly round outer edge.' },
+  screwCountersink: { nl:'Verzonken schroefkop', en:'Countersunk screw head' },
+  screwHeadDiameter: { nl:'Kopdiameter (mm)', en:'Head diameter (mm)' },
+  screwCountersinkDepth: { nl:'Verzinkdiepte (mm)', en:'Countersink depth (mm)' },
+  screwCountersinkSide: { nl:'Verzinking aan zijde', en:'Countersink side' },
+  topSide: { nl:'Bovenkant', en:'Top side' },
+  bottomSide: { nl:'Onderkant', en:'Bottom side' },
+  screwCountersinkHint: { nl:'Maakt aan de buitenkant van de ring een conische uitsparing voor de schroefkop. Het kleinere schroefgat loopt door de ring.', en:'Creates a conical recess on the outside face of the flange for the screw head. The smaller screw hole continues through the flange.' },
   continuous: { nl:'Doorlopend', en:'Continuous' },
   magCoupling: { nl:'Mag. koppeling', en:'Magnetic coupling' },
   slip: { nl:'Schuif', en:'Slip' },
@@ -280,9 +287,10 @@ function getStartScrewPlacement(idx) {
 
 function getStartScrewEdgeLimits(s) {
   const holeR=(s.startScrewD||5)/2+0.2;
-  const bumpAmp=holeR*2+2+(Math.max(0,s.startScrewExtraDiameterMm||0)/2);
+  const headR=s.startScrewCountersink?(s.startScrewHeadD||9)/2:holeR;
+  const bumpAmp=Math.max(holeR*2+2,headR*2+2)+(Math.max(0,s.startScrewExtraDiameterMm||0)/2);
   const edgeClearance=0.4;
-  return { min:holeR+edgeClearance, max:Math.max(holeR+edgeClearance,bumpAmp-holeR-edgeClearance) };
+  return { min:headR+edgeClearance, max:Math.max(headR+edgeClearance,bumpAmp-headR-edgeClearance) };
 }
 
 function getStartScrewEdgeDistance(s) {
@@ -546,6 +554,13 @@ function renderEditor() {
       <div class="field"><label>${t('screwExtraDiameter')}</label><input type="number" min="0" max="200" step="1" value="${s.startScrewExtraDiameterMm||0}" oninput="updClamp('startScrewExtraDiameterMm',+this.value,0,200)"></div>
       <div class="field"><label>${t('screwHoleEdgeDistance')}</label><input type="number" min="${screwEdgeLimits.min.toFixed(1)}" max="${screwEdgeLimits.max.toFixed(1)}" step="0.1" value="${getStartScrewEdgeDistance(s).toFixed(1)}" oninput="updClamp('startScrewEdgeMm',+this.value,${screwEdgeLimits.min},${screwEdgeLimits.max})"></div>
     </div>
+    <div class="toggle-row"><input type="checkbox" id="screw-countersink" ${s.startScrewCountersink?'checked':''} onchange="upd('startScrewCountersink',this.checked)"><label for="screw-countersink">${t('screwCountersink')}</label></div>
+    ${s.startScrewCountersink?`<div class="field-row">
+      <div class="field"><label>${t('screwHeadDiameter')}</label><input type="number" min="${(s.startScrewD||5)+0.2}" max="40" step="0.1" value="${s.startScrewHeadD||9}" oninput="updClamp('startScrewHeadD',+this.value,${(s.startScrewD||5)+0.2},40)"></div>
+      <div class="field"><label>${t('screwCountersinkDepth')}</label><input type="number" min="0.5" max="${s.startScrewLen||8}" step="0.1" value="${s.startScrewCountersinkDepth||2}" oninput="updClamp('startScrewCountersinkDepth',+this.value,0.5,${s.startScrewLen||8})"></div>
+    </div>
+    <div class="field-row"><div class="field"><label>${t('screwCountersinkSide')}</label><select onchange="upd('startScrewCountersinkSide',this.value)"><option value="top" ${s.startScrewCountersinkSide==='top'?'selected':''}>${t('topSide')}</option><option value="bottom" ${s.startScrewCountersinkSide!=='top'?'selected':''}>${t('bottomSide')}</option></select></div></div>
+    <div style="font-size:11px;color:#5a7a9a;margin-bottom:8px;line-height:1.6;background:#1a2030;border-radius:5px;padding:7px 10px;border:1px solid #2a3a5a">${t('screwCountersinkHint')}</div>`:''}
     <div class="toggle-row"><input type="checkbox" id="screw-round" ${s.startScrewRound?'checked':''} onchange="upd('startScrewRound',this.checked)"><label for="screw-round">${t('screwRoundRing')}</label></div>
     <div style="font-size:11px;color:#555577;margin-bottom:8px;line-height:1.5">${t('screwRoundHint')}</div>
     <div style="font-size:11px;color:#5a7a9a;margin-bottom:8px;line-height:1.6;background:#1a2030;border-radius:5px;padding:7px 10px;border:1px solid #2a3a5a">${t('screwHint')}</div>`:''}
@@ -708,6 +723,10 @@ function normalizeImportedSteps(data) {
       startScrewExtraDiameterMm:Number.isFinite(step.startScrewExtraDiameterMm)?Math.max(0,step.startScrewExtraDiameterMm):0,
       startScrewEdgeMm:Number.isFinite(step.startScrewEdgeMm)?step.startScrewEdgeMm:null,
       startScrewRound:step.startScrewRound===true,
+      startScrewCountersink:step.startScrewCountersink===true,
+      startScrewHeadD:Number.isFinite(step.startScrewHeadD)?step.startScrewHeadD:9,
+      startScrewCountersinkDepth:Number.isFinite(step.startScrewCountersinkDepth)?step.startScrewCountersinkDepth:2,
+      startScrewCountersinkSide:step.startScrewCountersinkSide==='top'?'top':'bottom',
       visible:step.visible!==false,
       decoupled:step.decoupled===true
     };
@@ -1010,7 +1029,7 @@ function makeCylinderGeo(cx,cy,cz, ax,ay,az, radius, height, N=20) {
 function makeMagneticCouplingGeo(shape, w, h, wall,
     len, bendDeg, bendAxis, bendStart, bendEnd,
     ringThick, magnetD, magnetCount, magnetThick,
-  female, frameOverride, throughHoles=false, profileOverride=null, extraDiameter=0, holeEdgeDistance=null, roundFlange=false) {
+  female, frameOverride, throughHoles=false, profileOverride=null, extraDiameter=0, holeEdgeDistance=null, roundFlange=false, countersinkDiameter=0, countersinkDepth=0, countersinkSide='bottom') {
 
   const frame = (female && frameOverride)
     ? frameOverride
@@ -1028,7 +1047,9 @@ function makeMagneticCouplingGeo(shape, w, h, wall,
   // de "breedte" van de ring) hangt UITSLUITEND af van de magneetmaat —
   // volledig losgekoppeld van zowel Ringdikte als de buiswanddikte, zodat
   // het wijzigen van die twee instellingen de ringbreedte niet beïnvloedt.
-  const bumpAmp   = pocketR*2 + 2;
+  const screwHeadRadius = throughHoles && countersinkDiameter>0 ? countersinkDiameter/2 : pocketR;
+  const bumpAmp   = Math.max(pocketR*2+2,screwHeadRadius*2+2);
+  const countersinkOffset = countersinkSide==='top' ? axLen : 0;
   const extraRadius = throughHoles ? Math.max(0,extraDiameter)/2 : 0;
   // Het magneetgat loopt nu altijd volledig door de Ringdikte heen (zie
   // buildCapWithHoles/makePocketGeo verderop) — geen aparte bodemdikte
@@ -1164,7 +1185,8 @@ function makeMagneticCouplingGeo(shape, w, h, wall,
         holeStarts.push(flat2D.length/2);
         for (let i=Np-1;i>=0;i--) {
           const a=(i/Np)*Math.PI*2;
-          flat2D.push(mp[0]+Math.cos(a)*pocketR, mp[1]+Math.sin(a)*pocketR);
+          const holeRadius=throughHoles && axOffVal===countersinkOffset && countersinkDiameter>0 ? countersinkDiameter/2 : pocketR;
+          flat2D.push(mp[0]+Math.cos(a)*holeRadius, mp[1]+Math.sin(a)*holeRadius);
         }
       }
     }
@@ -1200,16 +1222,18 @@ function makeMagneticCouplingGeo(shape, w, h, wall,
   // verandert niet mee met Ringdikte.
   for (const mp of magnetPositions) {
     allGeos.push(throughHoles
-      ? makeThroughHoleGeo(ep, right, up2, fwdV, sign, mp, pocketR, axLen, Np)
+      ? (countersinkDiameter>0
+        ? makeCountersunkThroughHoleGeo(ep,right,up2,fwdV,sign,mp,pocketR,countersinkDiameter/2,Math.min(countersinkDepth,axLen),axLen,Np,countersinkOffset,countersinkOffset===0?1:-1)
+        : makeThroughHoleGeo(ep, right, up2, fwdV, sign, mp, pocketR, axLen, Np))
       : makePocketGeo(ep, right, up2, fwdV, sign, mp, pocketR, magnetThick, Np));
   }
 
   return mergeGeos(allGeos);
 }
 
-function makeScrewCouplingGeo(shape, w, h, wall, frame, profile, ringThick, screwD, screwCount, extraDiameter, holeEdgeDistance, roundFlange) {
+function makeScrewCouplingGeo(shape, w, h, wall, frame, profile, ringThick, screwD, screwCount, extraDiameter, holeEdgeDistance, roundFlange, countersinkDiameter, countersinkDepth, countersinkSide) {
   return makeMagneticCouplingGeo(shape, w, h, wall, 0,0,'X',0,100,
-    ringThick, screwD, screwCount, 0, true, frame, true, profile, extraDiameter, holeEdgeDistance, roundFlange);
+    ringThick, screwD, screwCount, 0, true, frame, true, profile, extraDiameter, holeEdgeDistance, roundFlange, countersinkDiameter, countersinkDepth, countersinkSide);
 }
 
 // Wand + bodem van één rond bakje op een gegeven lokaal 2D-punt (px,py):
@@ -1291,6 +1315,40 @@ function makeThroughHoleGeo(ep, right, up2, fwdV, sign, p2d, holeR, depth, Np) {
   geo.setAttribute('position',new THREE.Float32BufferAttribute(verts,3));
   geo.setIndex(idx);
   geo.computeVertexNormals();
+  return geo;
+}
+
+function makeCountersunkThroughHoleGeo(ep,right,up2,fwdV,sign,p2d,holeR,headR,coneDepth,depth,Np,faceOffset=0,faceDirection=1) {
+  const verts=[],idx=[];
+  const outerR=Math.max(holeR,headR);
+  const middleDepth=Math.min(Math.max(0,coneDepth),depth);
+  const rings=[
+    {radius:outerR,offset:faceOffset},
+    {radius:holeR,offset:faceOffset+faceDirection*middleDepth},
+    {radius:holeR,offset:faceOffset+faceDirection*depth}
+  ];
+  rings.forEach(ring=>{
+    for(let i=0;i<Np;i++){
+      const angle=(Np-1-i)/Np*Math.PI*2;
+      const px=p2d[0]+Math.cos(angle)*ring.radius;
+      const py=p2d[1]+Math.sin(angle)*ring.radius;
+      verts.push(
+        ep[0]+right.x*px+up2.x*py-fwdV.x*ring.offset*sign,
+        ep[1]+right.y*px+up2.y*py-fwdV.y*ring.offset*sign,
+        ep[2]+right.z*px+up2.z*py-fwdV.z*ring.offset*sign
+      );
+    }
+  });
+  for(let ring=0;ring<rings.length-1;ring++){
+    for(let i=0;i<Np;i++){
+      const n=(i+1)%Np;
+      const a=ring*Np+i,b=ring*Np+n,c=(ring+1)*Np+n,d=(ring+1)*Np+i;
+      idx.push(a,c,b,a,d,c);
+    }
+  }
+  const geo=new THREE.BufferGeometry();
+  geo.setAttribute('position',new THREE.Float32BufferAttribute(verts,3));
+  geo.setIndex(idx);geo.computeVertexNormals();
   return geo;
 }
 
@@ -1479,7 +1537,8 @@ function buildMesh() {
       const frame=getSegmentFrame(t,s.lengthMm,s.bendDeg,s.bendAxis,s.bendStart,s.bendEnd);
       geos.push(makeScrewCouplingGeo(s.shape,s.widthMm,s.heightMm,s.wallMm,frame,profile,
         placement.ringLen,s.startScrewD||5,s.startScrewCount||6,
-        s.startScrewExtraDiameterMm||0,getStartScrewEdgeDistance(s),s.startScrewRound===true));
+        s.startScrewExtraDiameterMm||0,getStartScrewEdgeDistance(s),s.startScrewRound===true,
+        s.startScrewCountersink?(s.startScrewHeadD||9):0,s.startScrewCountersinkDepth||2,s.startScrewCountersinkSide||'bottom'));
     }
 
     // Magnetische koppeling: ring aan einde van dit segment (mannelijk)
